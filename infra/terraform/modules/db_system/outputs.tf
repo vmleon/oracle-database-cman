@@ -1,0 +1,28 @@
+data "oci_database_db_nodes" "nodes" {
+  compartment_id = var.compartment_ocid
+  db_system_id   = oci_database_db_system.this.id
+}
+
+data "oci_core_vnic" "node0" {
+  vnic_id = data.oci_database_db_nodes.nodes.db_nodes[0].vnic_id
+}
+
+output "scan_dns" {
+  value = oci_database_db_system.this.scan_dns_name
+}
+
+output "db_node_private_ip" {
+  value = data.oci_core_vnic.node0.private_ip_address
+}
+
+output "db_unique_name" {
+  value = "${var.db_name}_tp"
+}
+
+output "pdb_name" {
+  value = "${var.db_name}pdb"
+}
+
+output "service_name" {
+  value = "health"
+}
