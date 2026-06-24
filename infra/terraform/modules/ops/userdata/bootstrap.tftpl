@@ -1,0 +1,44 @@
+#!/bin/bash
+set -euo pipefail
+exec > /var/log/cman-bootstrap.log 2>&1
+echo "[bootstrap] waiting for DNS..."
+for _ in $(seq 1 60); do
+  getent hosts "objectstorage.${region}.oraclecloud.com" >/dev/null 2>&1 && break
+  sleep 5
+done
+
+dnf install -y oracle-epel-release-el9 || true
+dnf install -y ansible-core unzip
+ansible-galaxy collection install ansible.posix
+
+curl -4 --fail -sS "${ansible_par_url}" -o /home/opc/ansible.zip
+mkdir -p /home/opc/ansible && unzip -o /home/opc/ansible.zip -d /home/opc/ansible
+chown -R opc:opc /home/opc/ansible
+
+cat > /home/opc/private.key <<'EOT'
+${private_key_content}
+EOT
+chmod 400 /home/opc/private.key && chown opc:opc /home/opc/private.key
+
+cat > /home/opc/hosts.ini <<EOT
+[cman]
+cmanhost ansible_host=${cman_private_ip}
+[db]
+dbnode ansible_host=${db_node_private_ip}
+[all:vars]
+ansible_user=opc
+ansible_private_key_file=/home/opc/private.key
+ansible_python_interpreter=/usr/bin/python3
+EOT
+chown opc:opc /home/opc/hosts.ini
+
+export ANSIBLE_HOST_KEY_CHECKING=False
+ANS=/home/opc/ansible
+EV="cman_host=${cman_private_ip} cman_host_public=${cman_public_ip} client_cidr=${client_cidr} cman_client_par_url=${cman_client_par_url} db_user=system db_password=${db_password} db_name=${db_name} service_name=${service_name}"
+
+runuser -l opc -c "ansible-playbook -i /home/opc/hosts.ini $ANS/cman.yml -e \"$EV\""
+runuser -l opc -c "ansible-playbook -i /home/opc/hosts.ini $ANS/db.yml  -e \"$EV\""
+runuser -l opc -c "ansible-playbook -i /home/opc/hosts.ini $ANS/ops.yml -e \"$EV\""
+
+touch /var/lib/cman-bootstrap.ok
+echo "[bootstrap] done."

@@ -22,3 +22,7 @@ output "cman_client_par_url" {
   value     = oci_objectstorage_preauthrequest.client.full_path
   sensitive = true
 }
+
+output "ops_public_ip" {
+  value = module.ops.ops_public_ip
+}
