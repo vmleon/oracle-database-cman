@@ -4,6 +4,8 @@
 
 This walkthrough confirms that the laptop reaches the database exclusively through the CMAN endpoint — never by addressing RAC nodes directly.
 
+**Prerequisite:** Run `python manage.py sql` once to save the `cman` SQLcl named connection (laptop requires SQLcl: `brew install --cask sqlcl`).
+
 ### Run the health check
 
 ```bash

@@ -20,9 +20,17 @@ python manage.py setup
 
 Interactive: selects OCI profile, region, compartment, SSH key, and client CIDR; generates a DB password; writes `.env` and `infra/terraform/terraform.tfvars`. Nothing is edited by hand after this point.
 
-### 2. Stage the CMAN binaries
+### 2. Provision infrastructure
 
-The `cman-poc-artifacts` Object Storage bucket is created by `tf apply` (step 3). Upload the Oracle Database 19c Client (Administrator) zip after the bucket exists:
+```bash
+python manage.py tf apply
+```
+
+Stands up the VCN, subnets, NSGs, the CMAN VM, the ops/bastion VM, and the RAC DB system. Also creates the `cman-poc-artifacts` Object Storage bucket and pre-authenticated requests used by the ops host bootstrap. The ops host self-provisions via cloud-init: installs Ansible, pulls the roles, and configures CMAN-TDM on the CMAN host and creates services on the database — no SSH push from the operator.
+
+### 3. Stage the CMAN binaries
+
+> **Important:** Stage `client.zip` before the ops host cloud-init runs the `cman` Ansible play. The bootstrap pulls `client.zip` from the `cman-poc-artifacts` bucket during self-provisioning. Upload immediately after `tf apply` completes:
 
 ```bash
 oci os object put \
@@ -31,15 +39,11 @@ oci os object put \
   --file <path-to>/LINUX.X64_193000_client.zip
 ```
 
-On first run the ordering is: run `tf apply` → upload → the ops host bootstrap cloud-init pulls `client.zip` from the bucket during self-provisioning. If the upload completes before `tf apply` finishes, the ops host picks it up automatically.
-
-### 3. Provision infrastructure
+If the ops host already ran the `cman` play before the object was staged, re-run just that play from the ops host:
 
 ```bash
-python manage.py tf apply
+ssh -i <key> opc@<ops_ip> 'ansible-playbook -i /home/opc/hosts.ini /home/opc/ansible/cman.yml -e @/home/opc/extra_vars.json'
 ```
-
-Stands up the VCN, subnets, NSGs, the CMAN VM, the ops/bastion VM, and the RAC DB system. The ops host self-provisions via cloud-init: installs Ansible, pulls the roles, and configures CMAN-TDM on the CMAN host and creates services on the database — no SSH push from the operator.
 
 ### 4. Confirm bootstrap completion
 
