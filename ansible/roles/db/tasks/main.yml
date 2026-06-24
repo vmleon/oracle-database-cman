@@ -1,0 +1,16 @@
+---
+- name: Create health service on the RAC database
+  ansible.builtin.shell: |
+    set -e
+    export ORACLE_HOME=$(grep -m1 '^+ASM\|^{{ db_name | default("dbcman") }}' /etc/oratab | head -1 | cut -d: -f2)
+    export PATH=$ORACLE_HOME/bin:$PATH
+    DBUN=$(srvctl config database | head -1)
+    srvctl add service -db "$DBUN" -service health -pdb "{{ db_name | default('dbcman') }}pdb" \
+      -preferred "$(srvctl status database -db "$DBUN" | awk '/is running/{print $2}' | paste -sd,)" \
+      || echo "service exists"
+    srvctl start service -db "$DBUN" -service health || echo "already started"
+  args: { executable: /bin/bash }
+  become: true
+  become_user: oracle
+  register: svc
+  changed_when: "'exists' not in svc.stdout and 'already' not in svc.stdout"

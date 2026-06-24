@@ -1,0 +1,26 @@
+---
+- name: Install JDK + SQLcl
+  ansible.builtin.package:
+    name: [jdk-23-headless, sqlcl]
+    state: present
+    update_cache: true
+
+- name: Create conn directory
+  ansible.builtin.file:
+    path: /home/opc/conn
+    state: directory
+    owner: opc
+    group: opc
+    mode: "0744"
+
+- name: Render cman connection script
+  ansible.builtin.template:
+    src: conn/cman.sql.j2
+    dest: /home/opc/conn/cman.sql
+    owner: opc
+    group: opc
+    mode: "0640"
+
+- name: Create cman saved connection
+  ansible.builtin.command: "sql /nolog @/home/opc/conn/cman.sql"
+  become_user: opc

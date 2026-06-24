@@ -1,0 +1,3 @@
+- hosts: cman
+  become: true
+  roles: [cman]

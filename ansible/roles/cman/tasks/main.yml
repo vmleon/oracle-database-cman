@@ -1,0 +1,65 @@
+---
+- name: Install prerequisites
+  ansible.builtin.dnf:
+    name: [libnsl, libnsl2, unzip, oracle-database-preinstall-19c]
+    state: present
+
+- name: Create oracle inventory dir
+  ansible.builtin.file:
+    path: "{{ cman_inventory }}"
+    state: directory
+    owner: "{{ oracle_user }}"
+    group: oinstall
+    mode: "0775"
+
+- name: Download client installer
+  ansible.builtin.get_url:
+    url: "{{ cman_client_par_url }}"
+    dest: /tmp/client.zip
+    mode: "0644"
+
+- name: Unzip installer
+  ansible.builtin.unarchive:
+    src: /tmp/client.zip
+    dest: /tmp
+    remote_src: true
+    owner: "{{ oracle_user }}"
+
+- name: Write client response file
+  ansible.builtin.copy:
+    dest: /tmp/client.rsp
+    owner: "{{ oracle_user }}"
+    mode: "0644"
+    content: |
+      oracle.install.responseFileVersion=/oracle/install/rspfmt_clientinstall_response_schema_v19.0.0
+      ORACLE_HOME={{ cman_home }}
+      ORACLE_BASE=/opt/oracle
+      oracle.install.client.installType=Administrator
+      INVENTORY_LOCATION={{ cman_inventory }}
+      oracle.install.IsBuiltInAccount=false
+      UNIX_GROUP_NAME=oinstall
+
+- name: Silent install client (idempotent on ORACLE_HOME presence)
+  ansible.builtin.command:
+    cmd: /tmp/client/runInstaller -silent -responseFile /tmp/client.rsp -waitforcompletion -ignorePrereqFailure
+    creates: "{{ cman_home }}/bin/cmctl"
+  become_user: "{{ oracle_user }}"
+
+- name: Deploy cman.ora
+  ansible.builtin.template:
+    src: cman.ora.j2
+    dest: "{{ cman_home }}/network/admin/cman.ora"
+    owner: "{{ oracle_user }}"
+    group: oinstall
+    mode: "0644"
+
+- name: Start CMAN proxy
+  ansible.builtin.shell: |
+    export ORACLE_HOME={{ cman_home }}
+    export PATH=$ORACLE_HOME/bin:$PATH
+    cmctl startup -c cman_proxy
+  args: { executable: /bin/bash }
+  become_user: "{{ oracle_user }}"
+  register: cmctl_out
+  changed_when: "'successfully' in cmctl_out.stdout | lower"
+  failed_when: cmctl_out.rc != 0 and 'already running' not in cmctl_out.stdout | lower

@@ -1,0 +1,3 @@
+cman_home: /opt/oracle/product/19c/client_1
+cman_inventory: /opt/oracle/oraInventory
+oracle_user: oracle
