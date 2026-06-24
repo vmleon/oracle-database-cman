@@ -34,11 +34,25 @@ chown opc:opc /home/opc/hosts.ini
 
 export ANSIBLE_HOST_KEY_CHECKING=False
 ANS=/home/opc/ansible
-EV="cman_host=${cman_private_ip} cman_host_public=${cman_public_ip} client_cidr=${client_cidr} cman_client_par_url=${cman_client_par_url} db_user=system db_password=${db_password} db_name=${db_name} service_name=${service_name}"
 
-runuser -l opc -c "ansible-playbook -i /home/opc/hosts.ini $ANS/cman.yml -e \"$EV\""
-runuser -l opc -c "ansible-playbook -i /home/opc/hosts.ini $ANS/db.yml  -e \"$EV\""
-runuser -l opc -c "ansible-playbook -i /home/opc/hosts.ini $ANS/ops.yml -e \"$EV\""
+cat > /home/opc/extra_vars.json <<EOT
+{
+  "cman_host": "${cman_private_ip}",
+  "cman_host_public": "${cman_public_ip}",
+  "client_cidr": "${client_cidr}",
+  "cman_client_par_url": "${cman_client_par_url}",
+  "db_user": "system",
+  "db_password": "${db_password}",
+  "db_name": "${db_name}",
+  "service_name": "${service_name}"
+}
+EOT
+chown opc:opc /home/opc/extra_vars.json
+chmod 600 /home/opc/extra_vars.json
+
+runuser -l opc -c "ansible-playbook -i /home/opc/hosts.ini $ANS/cman.yml -e @/home/opc/extra_vars.json"
+runuser -l opc -c "ansible-playbook -i /home/opc/hosts.ini $ANS/db.yml  -e @/home/opc/extra_vars.json"
+runuser -l opc -c "ansible-playbook -i /home/opc/hosts.ini $ANS/ops.yml -e @/home/opc/extra_vars.json"
 
 touch /var/lib/cman-bootstrap.ok
 echo "[bootstrap] done."
