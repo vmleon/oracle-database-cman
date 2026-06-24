@@ -17,6 +17,7 @@
     url: "{{ cman_client_par_url }}"
     dest: /tmp/client.zip
     mode: "0644"
+    creates: /tmp/client.zip
 
 - name: Unzip installer
   ansible.builtin.unarchive:
@@ -24,6 +25,7 @@
     dest: /tmp
     remote_src: true
     owner: "{{ oracle_user }}"
+    creates: /tmp/client/runInstaller
 
 - name: Write client response file
   ansible.builtin.copy:

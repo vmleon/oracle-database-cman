@@ -24,3 +24,4 @@
 - name: Create cman saved connection
   ansible.builtin.command: "sql /nolog @/home/opc/conn/cman.sql"
   become_user: opc
+  changed_when: false

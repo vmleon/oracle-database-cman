@@ -8,7 +8,11 @@
     srvctl add service -db "$DBUN" -service health -pdb "{{ db_name | default('dbcman') }}pdb" \
       -preferred "$(srvctl status database -db "$DBUN" | awk '/is running/{print $2}' | paste -sd,)" \
       || echo "service exists"
-    srvctl start service -db "$DBUN" -service health || echo "already started"
+    if srvctl status service -db "$DBUN" -service health 2>/dev/null | grep -q 'is running'; then
+      echo "already started"
+    else
+      srvctl start service -db "$DBUN" -service health
+    fi
   args: { executable: /bin/bash }
   become: true
   become_user: oracle
