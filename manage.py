@@ -291,5 +291,83 @@ def setup():
     console.print("\nNext step: [bold]python manage.py tf apply[/bold]")
 
 
+@app.command()
+def tf(action: str):
+    """plan | apply | destroy (reads infra/terraform/terraform.tfvars)."""
+    env = {**os.environ, "GODEBUG": "netdns=cgo"}
+    if action in ("plan", "apply"):
+        _sh(["terraform", "init", "-input=false"], cwd=TF_DIR, env=env)
+    args = ["terraform", action]
+    if action in ("apply", "destroy"):
+        args.append("-auto-approve")
+    _sh(args, cwd=TF_DIR, env=env)
+
+
+@app.command()
+def info():
+    """Show endpoints and copy-paste connect/SSH commands."""
+    from rich.console import Console
+    from rich.panel import Panel
+    console = Console()
+    cfg = load_config({})
+    tf = _read_tf_output()
+    cman_ip = tf.get("cman_public_ip", {}).get("value")
+    ops_ip = tf.get("ops_public_ip", {}).get("value")
+    if not cman_ip:
+        console.print("[yellow]No Terraform outputs — run 'python manage.py tf apply' first.[/yellow]")
+        raise typer.Exit(1)
+    key = cfg.get("SSH_PRIVATE_KEY_PATH", "~/.ssh/id_rsa")
+    svc = cfg.get("DB_SERVICE", "health")
+    console.print(Panel(
+        f"Region:       {cfg.get('OCI_REGION','?')}\n"
+        f"CMAN endpoint: {cman_ip}:1521/{svc}\n"
+        f"Ops host:      {ops_ip}\n"
+        f"DB user:       {cfg.get('DB_USER','system')}",
+        title="Deployment",
+    ))
+    console.print("\n[bold]Tail the ops bootstrap log[/bold]")
+    console.print(f"ssh -i {key} opc@{ops_ip} 'sudo tail -n 80 /var/log/cman-bootstrap.log'")
+    console.print("\n[bold]Health through CMAN (local SQLcl)[/bold]")
+    console.print("python manage.py sql   # one-time: save the 'cman' connection locally")
+    console.print("python manage.py health")
+
+
+@app.command()
+def sql():
+    """Create the 'cman' SQLcl saved connection on this laptop (TERM=dumb)."""
+    cfg = load_config({})
+    host = cfg.get("CMAN_HOST")
+    if not host:
+        typer.echo("No CMAN host yet — run 'tf apply' first.")
+        raise typer.Exit(1)
+    user = cfg.get("DB_USER", "system")
+    pwd = cfg["DB_PASSWORD"]
+    svc = cfg.get("DB_SERVICE", "health")
+    script = f"conn -save cman -replace -savepwd {user}/{pwd}@{host}:1521/{svc}\nEXIT;\n"
+    env = {**os.environ, "TERM": "dumb"}
+    subprocess.run(["sql", "/nolog"], input=script, text=True, env=env, check=True)
+    typer.echo("Saved connection 'cman'. Use: TERM=dumb sql -name cman")
+
+
+@app.command()
+def health():
+    """Run a query through the CMAN endpoint via the saved 'cman' connection."""
+    env = {**os.environ, "TERM": "dumb"}
+    rc = subprocess.run(
+        ["sql", "-name", "cman", "-S"],
+        input="select instance_name from v$instance;\nexit;\n",
+        text=True, env=env, capture_output=True,
+    )
+    typer.echo(rc.stdout.strip())
+    raise typer.Exit(0 if (rc.returncode == 0 and rc.stdout.strip()) else 1)
+
+
+@app.command()
+def clean(destroy: bool = False):
+    """Remove local artefacts; optionally tear down infra with --destroy."""
+    if destroy:
+        _sh(["terraform", "destroy", "-auto-approve"], cwd=TF_DIR)
+
+
 if __name__ == "__main__":
     app()
