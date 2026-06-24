@@ -15,3 +15,13 @@ module "db_system" {
   db_version        = var.db_version
   db_shape          = var.db_shape
 }
+
+module "cman" {
+  source           = "./modules/cman"
+  compartment_ocid = var.compartment_ocid
+  tenancy_ocid     = var.tenancy_ocid
+  public_subnet_id = module.network.public_subnet_id
+  cman_nsg_id      = module.network.cman_nsg_id
+  ssh_public_key   = var.ssh_public_key
+  vm_shape         = var.vm_shape
+}

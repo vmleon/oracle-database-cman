@@ -9,3 +9,7 @@ output "db_service_name" {
 output "db_scan_dns" {
   value = module.db_system.scan_dns
 }
+
+output "cman_public_ip" {
+  value = module.cman.cman_public_ip
+}
