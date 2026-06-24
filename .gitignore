@@ -1,0 +1,19 @@
+# secrets / state / generated
+.env
+infra/terraform/terraform.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.pem
+*.key
+id_rsa*
+# terraform-generated artifacts
+infra/terraform/generated/*
+!infra/terraform/generated/.gitkeep
+# tool artifacts
+__pycache__/
+.venv/
+*.egg-info/
+# superpowers plans/specs (local only)
+docs/superpowers/

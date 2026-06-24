@@ -1,0 +1,21 @@
+[project]
+name = "cman-poc-manage"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12",
+    "python-dotenv>=1.0",
+    "oci>=2.120",
+    "InquirerPy>=0.3",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+# manage.py is a single top-level script, not a package.
+[tool.setuptools]
+py-modules = ["manage"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
