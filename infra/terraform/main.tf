@@ -14,6 +14,7 @@ module "db_system" {
   db_name           = var.db_name
   db_version        = var.db_version
   db_shape          = var.db_shape
+  node_count        = var.db_node_count
 }
 
 module "cman" {

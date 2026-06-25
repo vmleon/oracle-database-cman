@@ -75,3 +75,9 @@ variable "cman_client_source_path" {
   type        = string
   description = "Local path to the Oracle 19c client Administrator zip; uploaded to the artifacts bucket by setup"
 }
+
+variable "db_node_count" {
+  type        = number
+  default     = 2
+  description = "DB system nodes: 2 = RAC (needed for draining/upgrade demos), 1 = single instance (much faster to provision)"
+}

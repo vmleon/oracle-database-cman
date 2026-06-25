@@ -10,7 +10,7 @@ resource "oci_database_db_system" "this" {
 
   shape            = var.db_shape
   cpu_core_count   = 2
-  node_count       = 2
+  node_count       = var.node_count
   database_edition = "ENTERPRISE_EDITION_EXTREME_PERFORMANCE"
   cluster_name     = "cmanrac"
   hostname         = "cmanrac"
@@ -31,5 +31,12 @@ resource "oci_database_db_system" "this" {
       character_set       = "AL32UTF8"
       ncharacter_set      = "AL16UTF16"
     }
+  }
+
+  # 2-node RAC provisioning runs well past the provider's ~2h default.
+  timeouts {
+    create = "4h"
+    update = "4h"
+    delete = "2h"
   }
 }

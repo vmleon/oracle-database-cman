@@ -41,3 +41,9 @@ variable "db_shape" {
   type    = string
   default = "VM.Standard2.2"
 }
+
+variable "node_count" {
+  type    = number
+  default = 2
+  # 2 = RAC (needed for the draining/upgrade demos); 1 = single instance, much faster to provision.
+}
