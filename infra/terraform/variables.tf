@@ -70,3 +70,8 @@ variable "cman_client_object" {
   default     = "client.zip"
   description = "Object name of the staged Oracle 19c client Administrator installer in the artifacts bucket"
 }
+
+variable "cman_client_source_path" {
+  type        = string
+  description = "Local path to the Oracle 19c client Administrator zip; uploaded to the artifacts bucket by setup"
+}

@@ -6,6 +6,7 @@ import os
 import secrets
 import subprocess
 import urllib.request
+import zipfile
 from pathlib import Path
 
 import typer
@@ -168,6 +169,21 @@ def _write_tfvars(values):
     TFVARS_FILE.write_text("\n".join(lines) + "\n")
 
 
+def _validate_client_zip(path):
+    """Check the path is a usable Oracle 19c Administrator client zip."""
+    p = Path(path).expanduser()
+    if not p.is_file():
+        return False, "file not found"
+    try:
+        with zipfile.ZipFile(p) as z:
+            names = z.namelist()
+    except zipfile.BadZipFile:
+        return False, "not a valid zip file"
+    if "client/runInstaller" not in names:
+        return False, "not the Administrator client zip (missing client/runInstaller)"
+    return True, ""
+
+
 # --- commands --------------------------------------------------------------
 
 @app.command()
@@ -243,6 +259,18 @@ def setup():
         message="Database name (used for resource naming):", default="dbcman"
     ).execute()
 
+    default_client_zip = str(Path.home() / "Downloads" / "LINUX.X64_193000_client.zip")
+    while True:
+        client_zip = inquirer.text(
+            message="Oracle 19c client Administrator zip path:",
+            default=default_client_zip,
+        ).execute()
+        ok, why = _validate_client_zip(client_zip)
+        if ok:
+            client_zip = str(Path(client_zip).expanduser().resolve())
+            break
+        console.print(f"[red]Cannot use this zip: {why}[/red]")
+
     db_password = _generate_password()
 
     console.print(Panel(
@@ -252,9 +280,8 @@ def setup():
         f"Client CIDR:   {client_cidr}\n"
         f"SSH key:       {ssh_private}\n"
         f"Database name: {db_name}\n"
-        f"DB password:   (generated — stored in .env and terraform.tfvars)\n\n"
-        f"[yellow]Upload the Oracle 19c client Administrator zip to bucket "
-        f"`cman-poc-artifacts` as `client.zip` before `tf apply`.[/yellow]",
+        f"Client zip:    {client_zip}\n"
+        f"DB password:   (generated — stored in .env and terraform.tfvars)",
         title="Configuration Summary",
     ))
     if not inquirer.confirm(message="Save configuration?", default=True).execute():
@@ -285,6 +312,7 @@ def setup():
         "ssh_private_key_path": ssh_private,
         "db_admin_password": db_password,
         "db_name": db_name,
+        "cman_client_source_path": client_zip,
     })
 
     console.print(f"\n[green]Wrote {ENV_FILE} and {TFVARS_FILE}[/green]")

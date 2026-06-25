@@ -34,13 +34,20 @@ resource "oci_objectstorage_preauthrequest" "ansible" {
   time_expires = timeadd(time_static.deploy.rfc3339, "168h")
 }
 
-# Operator stages the Oracle 19c client Administrator zip into the bucket once.
-# This PAR lets the cman role pull it during provisioning.
+# The Oracle 19c client Administrator zip, uploaded from the local path collected by
+# `setup`. The cman role pulls it during provisioning via the PAR below.
+resource "oci_objectstorage_object" "client" {
+  bucket    = oci_objectstorage_bucket.artifacts.name
+  namespace = data.oci_objectstorage_namespace.ns.namespace
+  object    = var.cman_client_object
+  source    = var.cman_client_source_path
+}
+
 resource "oci_objectstorage_preauthrequest" "client" {
   namespace    = data.oci_objectstorage_namespace.ns.namespace
   bucket       = oci_objectstorage_bucket.artifacts.name
   name         = "cman-poc-client-par"
   access_type  = "ObjectRead"
-  object_name  = var.cman_client_object
+  object_name  = oci_objectstorage_object.client.object
   time_expires = timeadd(time_static.deploy.rfc3339, "168h")
 }

@@ -14,11 +14,11 @@ See [cman-showcase-design.md](cman-showcase-design.md) for the full architecture
 
 ## Quick reference — `manage.py` verbs
 
-| Verb                        | What it does                                                                                                                           |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `setup`                     | Interactive: pick OCI profile, region, compartment, SSH key, client CIDR; generates DB password; writes `.env` and `terraform.tfvars`. |
-| `tf <plan\|apply\|destroy>` | Run Terraform against `infra/terraform/` using the generated tfvars.                                                                   |
-| `info`                      | Print endpoints and ready-to-paste SSH and connect commands.                                                                           |
-| `sql`                       | Save the `cman` SQLcl named connection on the local machine.                                                                           |
-| `health`                    | Run a query through the CMAN endpoint via the saved connection and print the instance name.                                            |
-| `clean [--destroy]`         | Delete generated files under `infra/terraform/generated/`; with `--destroy` also tears down all provisioned OCI infrastructure.        |
+| Verb                        | What it does                                                                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `setup`                     | Interactive: pick OCI profile, region, compartment, SSH key, client CIDR; ask for the Oracle 19c client zip path (validated); generates DB password; writes `.env` and `terraform.tfvars`. |
+| `tf <plan\|apply\|destroy>` | Run Terraform against `infra/terraform/` using the generated tfvars.                                                                                                                       |
+| `info`                      | Print endpoints and ready-to-paste SSH and connect commands.                                                                                                                               |
+| `sql`                       | Save the `cman` SQLcl named connection on the local machine.                                                                                                                               |
+| `health`                    | Run a query through the CMAN endpoint via the saved connection and print the instance name.                                                                                                |
+| `clean [--destroy]`         | Delete generated files under `infra/terraform/generated/`; with `--destroy` also tears down all provisioned OCI infrastructure.                                                            |
