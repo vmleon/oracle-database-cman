@@ -47,14 +47,6 @@ OCI **Base Database Service**, two VM DB systems, each **2-node RAC**, **Enterpr
 
 Extreme Performance is required on Base DB for multi-node RAC and is the only edition bundling Active Data Guard; Application Continuity requires RAC or Active Data Guard. So Extreme Performance is the entry price for the headline features, and both DB systems being RAC means a migration's _destination_ also offers FAN/AC — letting CMAN drain off one cluster and have clients **continue** on the other, not merely reconnect.
 
-Why not the lighter substrates:
-
-| Substrate                         | Verdict                                                                                                                                                       |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Oracle Database Free (containers) | Caps at 2 CPU / 2 GB / 12 GB, one instance per container, **no RAC, Data Guard, AC, or TAC** — cannot demonstrate the HA/upgrade tier at all.                 |
-| Autonomous Database               | Hides RAC/routing by design, so CMAN's SCAN-redirect and topology-hiding value can't be shown; less control over services, listeners, and maintenance timing. |
-| Base DB, 2× 2-node RAC EP         | Full control of editions, services, RAC, Data Guard, and maintenance windows — every use-case is demonstrable.                                                |
-
 The two DB systems run as **independent clusters** by default (for routing and migration scenarios) and are **pairable as Active Data Guard** for the rolling-upgrade scenario.
 
 ---
