@@ -15,6 +15,7 @@ output "db_node_private_ip" {
   value = data.oci_core_vnic.node0.private_ip_address
 }
 
+# Informational only — the db role discovers the real unique name at runtime; do not wire this guessed value into any consumer.
 output "db_unique_name" {
   value = "${var.db_name}_tp"
 }

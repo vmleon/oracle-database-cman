@@ -362,9 +362,20 @@ def health():
     raise typer.Exit(0 if (rc.returncode == 0 and rc.stdout.strip()) else 1)
 
 
+GENERATED_DIR = TF_DIR / "generated"
+
+
 @app.command()
 def clean(destroy: bool = False):
-    """Remove local artefacts; optionally tear down infra with --destroy."""
+    """Remove local build artefacts (infra/terraform/generated/); with --destroy also tear down all provisioned infrastructure."""
+    for f in GENERATED_DIR.iterdir():
+        if f.name != ".gitkeep":
+            if f.is_file():
+                f.unlink()
+            elif f.is_dir():
+                import shutil
+                shutil.rmtree(f)
+    typer.echo(f"Cleared {GENERATED_DIR}")
     if destroy:
         _sh(["terraform", "destroy", "-auto-approve"], cwd=TF_DIR)
 

@@ -19,4 +19,4 @@ See [cman-showcase-design.md](cman-showcase-design.md) for the full architecture
 | `info`                      | Print endpoints and ready-to-paste SSH and connect commands.                                                                           |
 | `sql`                       | Save the `cman` SQLcl named connection on the local machine.                                                                           |
 | `health`                    | Run a query through the CMAN endpoint via the saved connection and print the instance name.                                            |
-| `clean [--destroy]`         | Remove local artefacts; with `--destroy` also tears down all OCI infrastructure.                                                       |
+| `clean [--destroy]`         | Delete generated files under `infra/terraform/generated/`; with `--destroy` also tears down all provisioned OCI infrastructure.        |
