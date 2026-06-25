@@ -46,6 +46,8 @@
     cmd: /tmp/client/runInstaller -silent -responseFile /tmp/client.rsp -waitforcompletion -ignorePrereqFailure
     creates: "{{ cman_home }}/bin/cmctl"
   become_user: "{{ oracle_user }}"
+  environment:
+    CV_ASSUME_DISTID: OL8
 
 - name: Deploy cman.ora
   ansible.builtin.template:

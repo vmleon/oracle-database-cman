@@ -9,7 +9,7 @@ resource "oci_database_db_system" "this" {
   nsg_ids             = [var.db_nsg_id]
 
   shape            = var.db_shape
-  cpu_core_count   = 2
+  cpu_core_count   = 4
   node_count       = var.node_count
   database_edition = "ENTERPRISE_EDITION_EXTREME_PERFORMANCE"
   cluster_name     = "cmanrac"

@@ -10,7 +10,15 @@ flowchart LR
     CMAN --> RAC["2-node RAC<br/>private subnet"]
 ```
 
-See [cman-showcase-design.md](cman-showcase-design.md) for the full architecture and the eight-use-case roadmap (access-control firewall, service routing, SOCKS5 handoff, TCP↔TCPS translation, connection multiplexing, planned-maintenance draining, SCAN redirect, and transparent database upgrade).
+See [cman-showcase-design.md](cman-showcase-design.md) for the full architecture and the eight-use-case roadmap (access-control firewall, service routing, SOCKS5 handoff, TCP↔TCPS translation, connection multiplexing, planned-maintenance draining, SCAN redirect, and transparent database upgrade). [BACKLOG.md](BACKLOG.md) tracks the pending work toward that vision.
+
+## Deployed today (foundation slice)
+
+- VCN with public/private subnets and NSG source-IP allowlists.
+- A single 2-node RAC DB system (Extreme Performance) in the private subnet.
+- One CMAN VM in Traffic Director Mode with an IP-allow rule, fronting the RAC SCAN.
+- An ops/bastion VM that self-provisions via cloud-init and runs the Ansible `cman` and `db` roles.
+- A `health` service on the RAC, and a verified laptop→CMAN→RAC query through the one endpoint.
 
 ## Quick reference — `manage.py` verbs
 

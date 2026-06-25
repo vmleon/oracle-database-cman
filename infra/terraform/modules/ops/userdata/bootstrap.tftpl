@@ -29,10 +29,10 @@ dbnode ansible_host=${db_node_private_ip}
 ansible_user=opc
 ansible_private_key_file=/home/opc/private.key
 ansible_python_interpreter=/usr/bin/python3
+ansible_ssh_common_args=-o StrictHostKeyChecking=no
 EOT
 chown opc:opc /home/opc/hosts.ini
 
-export ANSIBLE_HOST_KEY_CHECKING=False
 ANS=/home/opc/ansible
 
 cat > /home/opc/extra_vars.json <<EOT
