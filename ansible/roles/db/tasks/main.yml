@@ -2,11 +2,12 @@
 - name: Create health service on the RAC database
   ansible.builtin.shell: |
     set -e
-    export ORACLE_HOME=$(grep "^{{ db_name | default('dbcman') }}:" /etc/oratab | head -1 | cut -d: -f2)
+    export ORACLE_HOME=$(ls -d /u01/app/oracle/product/*/dbhome_* 2>/dev/null | head -1)
     export PATH=$ORACLE_HOME/bin:$PATH
     DBUN=$(srvctl config database | head -1)
+    PDB=$(srvctl config service -db "$DBUN" | awk -F': ' '/Pluggable database name/{print $2; exit}')
     if ! srvctl config service -db "$DBUN" -service health >/dev/null 2>&1; then
-      srvctl add service -db "$DBUN" -service health -pdb "{{ db_name | default('dbcman') }}pdb" \
+      srvctl add service -db "$DBUN" -service health -pdb "$PDB" \
         -preferred "$(srvctl status database -db "$DBUN" | awk '/is running/{print $2}' | paste -sd,)"
     fi
     if srvctl status service -db "$DBUN" -service health 2>/dev/null | grep -q 'is running'; then
@@ -19,3 +20,26 @@
   become_user: oracle
   register: svc
   changed_when: "'exists' not in svc.stdout and 'already' not in svc.stdout"
+
+- name: Register the database services with CMAN (append CMAN to remote_listener)
+  ansible.builtin.shell: |
+    set -e
+    export ORACLE_HOME=$(ls -d /u01/app/oracle/product/*/dbhome_* 2>/dev/null | head -1)
+    export ORACLE_SID=$(ps -ef | grep -oE 'ora_pmon_[A-Za-z0-9]+' | head -1 | sed 's/ora_pmon_//')
+    export PATH=$ORACLE_HOME/bin:$PATH
+    CMAN="(ADDRESS=(PROTOCOL=TCP)(HOST={{ cman_host }})(PORT=1521))"
+    CUR=$(printf '%s\n' "set heading off feedback off pages 0 lines 400" \
+      "select value from v\$parameter where name='remote_listener';" | sqlplus -s / as sysdba | tr -d ' \n')
+    if printf '%s' "$CUR" | grep -q "{{ cman_host }}"; then
+      echo "already registered"
+    else
+      [ -z "$CUR" ] && NEW="$CMAN" || NEW="${CUR},${CMAN}"
+      printf '%s\n' "alter system set remote_listener='${NEW}' scope=both sid='*';" \
+        "alter system register;" | sqlplus -s / as sysdba
+    fi
+  args: { executable: /bin/bash }
+  become: true
+  become_user: oracle
+  register: rl
+  changed_when: "'already registered' not in rl.stdout"
+  failed_when: "'ORA-' in rl.stdout"

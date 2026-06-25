@@ -25,5 +25,8 @@ output "pdb_name" {
 }
 
 output "service_name" {
-  value = "health"
+  # Clients connect through CMAN with the fully-qualified service name: the DB publishes
+  # services under its domain, which is the SCAN DNS name after its first label
+  # (cmanrac-scan.<domain> -> <domain>).
+  value = "health.${regex("^[^.]+[.](.+)$", oci_database_db_system.this.scan_dns_name)[0]}"
 }

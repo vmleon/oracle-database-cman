@@ -12,7 +12,7 @@ brew install --cask sqlcl
 
 ### Download the Oracle 19c client installer
 
-CMAN ships inside the Oracle Client; the CMAN host installs it in **Administrator** mode. This file is license-gated, so it cannot be fetched automatically — download it once and note the path. `setup` asks for that path, uploads the file to Object Storage, and the CMAN host pulls it during provisioning.
+CMAN ships inside the Oracle Client; the CMAN host installs it with a **Custom** install that selects the Oracle Connection Manager component (`oracle.network.cman`), which the Administrator install type omits. This file is license-gated, so it cannot be fetched automatically — download it once and note the path. `setup` asks for that path, uploads the file to Object Storage, and the CMAN host pulls it during provisioning.
 
 1. Open the [Oracle Database 19c for Linux x86-64 download page](https://www.oracle.com/database/technologies/oracle19c-linux-downloads.html).
 2. Sign in with an Oracle account and accept the license agreement.

@@ -1,0 +1,9 @@
+---
+- name: Reload CMAN configuration
+  ansible.builtin.shell: |
+    export ORACLE_HOME={{ cman_home }}
+    export PATH=$ORACLE_HOME/bin:$PATH
+    cmctl shutdown -c cman_proxy || true
+    cmctl startup -c cman_proxy
+  args: { executable: /bin/bash }
+  become_user: "{{ oracle_user }}"

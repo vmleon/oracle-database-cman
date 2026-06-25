@@ -171,6 +171,21 @@ resource "oci_core_network_security_group_security_rule" "cman_in_ops_ssh" {
   }
 }
 
+# DB -> CMAN :1521 (PMON service registration, so CMAN learns the routed services)
+resource "oci_core_network_security_group_security_rule" "cman_in_db_1521" {
+  network_security_group_id = oci_core_network_security_group.cman.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  source                    = oci_core_network_security_group.db.id
+  source_type               = "NETWORK_SECURITY_GROUP"
+  tcp_options {
+    destination_port_range {
+      min = 1521
+      max = 1521
+    }
+  }
+}
+
 # CMAN -> DB :1521 (SCAN + node VIP + listener)
 resource "oci_core_network_security_group_security_rule" "cman_eg_db_1521" {
   network_security_group_id = oci_core_network_security_group.cman.id
@@ -182,6 +197,22 @@ resource "oci_core_network_security_group_security_rule" "cman_eg_db_1521" {
     destination_port_range {
       min = 1521
       max = 1521
+    }
+  }
+}
+
+# CMAN -> DB :2484 (OCI listeners also advertise a TCPS handler; making it reachable lets
+# CMAN fail over quickly to the TCP handler instead of stalling on a silently dropped packet)
+resource "oci_core_network_security_group_security_rule" "cman_eg_db_2484" {
+  network_security_group_id = oci_core_network_security_group.cman.id
+  direction                 = "EGRESS"
+  protocol                  = "6"
+  destination               = oci_core_network_security_group.db.id
+  destination_type          = "NETWORK_SECURITY_GROUP"
+  tcp_options {
+    destination_port_range {
+      min = 2484
+      max = 2484
     }
   }
 }

@@ -1,3 +1,6 @@
 cman_home: /opt/oracle/product/19c/client_1
 cman_inventory: /opt/oracle/oraInventory
 oracle_user: oracle
+# Private (DB) subnet, invited to register services with CMAN (VNCR). Matches the
+# network module's private subnet CIDR.
+cman_db_subnet: 10.0.2.0/24

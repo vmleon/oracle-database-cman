@@ -4,6 +4,15 @@
     name: [libnsl, libnsl2, unzip, oracle-database-preinstall-19c]
     state: present
 
+# glibc 2.34 on OL9 dropped libpthread_nonshared.a; the 19.3 relink rules still
+# reference it. An empty archive satisfies the linker — the symbols are in libc.
+- name: Provide empty libpthread_nonshared.a for the OL9 relink
+  ansible.builtin.copy:
+    dest: /usr/lib64/libpthread_nonshared.a
+    content: "!<arch>\n"
+    force: false
+    mode: "0644"
+
 - name: Create oracle inventory dir
   ansible.builtin.file:
     path: "{{ cman_inventory }}"
@@ -36,7 +45,8 @@
       oracle.install.responseFileVersion=/oracle/install/rspfmt_clientinstall_response_schema_v19.0.0
       ORACLE_HOME={{ cman_home }}
       ORACLE_BASE=/opt/oracle
-      oracle.install.client.installType=Administrator
+      oracle.install.client.installType=Custom
+      oracle.install.client.customComponents="oracle.network.cman:19.0.0.0.0"
       INVENTORY_LOCATION={{ cman_inventory }}
       oracle.install.IsBuiltInAccount=false
       UNIX_GROUP_NAME=oinstall
@@ -48,6 +58,21 @@
   become_user: "{{ oracle_user }}"
   environment:
     CV_ASSUME_DISTID: OL8
+  register: client_install
+  # runInstaller exits 6 on "success with warnings" (optional prereqs); only treat other codes as failure.
+  changed_when: client_install.rc | default(0) in [0, 6]
+  failed_when: client_install.rc | default(0) not in [0, 6]
+
+- name: Register the central inventory (orainstRoot.sh, first run only)
+  ansible.builtin.command:
+    cmd: "{{ cman_inventory }}/orainstRoot.sh"
+    creates: /etc/oraInst.loc
+
+- name: Open the CMAN listener port in the host firewall
+  ansible.builtin.shell: |
+    firewall-cmd --permanent --add-port=1521/tcp
+    firewall-cmd --reload
+  changed_when: true
 
 - name: Deploy cman.ora
   ansible.builtin.template:
@@ -56,6 +81,7 @@
     owner: "{{ oracle_user }}"
     group: oinstall
     mode: "0644"
+  notify: Reload CMAN configuration
 
 - name: Start CMAN proxy
   ansible.builtin.shell: |
@@ -65,5 +91,6 @@
   args: { executable: /bin/bash }
   become_user: "{{ oracle_user }}"
   register: cmctl_out
-  changed_when: "'successfully' in cmctl_out.stdout | lower"
-  failed_when: cmctl_out.rc != 0 and 'already running' not in cmctl_out.stdout | lower
+  changed_when: "'successfully' in (cmctl_out.stdout | lower)"
+  # cmctl returns rc 0 even when the instance fails to start; TNS-04012 is the real failure signal.
+  failed_when: "'TNS-04012' in cmctl_out.stdout"

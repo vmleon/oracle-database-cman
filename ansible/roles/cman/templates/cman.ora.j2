@@ -7,6 +7,8 @@ cman_proxy =
       (max_connections = 1024)
       (idle_timeout = 0)
       (inbound_connect_timeout = 60)
-      (log_level = user))
+      (log_level = user)
+      (registration_invited_nodes = {{ cman_db_subnet }}))
     (rule_list =
+      (rule = (src = {{ cman_host }})(dst = 127.0.0.1)(srv = cmon)(act = accept))
       (rule = (src = {{ client_cidr }})(dst = *)(srv = *)(act = accept))))
