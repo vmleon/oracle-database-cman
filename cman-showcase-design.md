@@ -37,7 +37,7 @@ CMAN-TDM's distinct contributions:
 2. **It provides continuity on behalf of clients that cannot.** AC/TAC normally needs a modern, correctly configured Oracle driver. CMAN-TDM can hold session state and do failover/restore itself, so even an old client (11.2+) or a non-AC app gets continuity — configured **once at the router**, not per application.
 3. **It hides the topology.** RAC's Single Client Access Name (SCAN) listener redirects a client to a node VIP; CMAN resolves that redirect **server-side**, and with Data Guard it fronts the role change too. The client only ever talks to CMAN.
 
-Honest positioning: a modern driver talking directly to RAC can do AC/TAC without CMAN. CMAN's value is delivering it to clients that cannot, centralizing the configuration, and bundling it with proxying, firewalling, topology-hiding, private-endpoint protection, and multiplexing in one tier. The showcase states this rather than implying CMAN is required for AC.
+Honest positioning: a modern driver talking directly to RAC can do AC/TAC without CMAN, so AC by itself is not where CMAN is irreplaceable. Where CMAN cannot be substituted is the **stable client endpoint that survives the backend moving**: clients keep one address while the database is migrated to new hardware, patched, or upgraded behind it. A direct connection string is bound to a specific cluster's SCAN, so moving the database forces every client to be reconfigured; behind CMAN the same move is a server-side re-point of the proxy's routing — no client change — and when the destination is a RAC/Data Guard pair, in-flight work **drains and continues** rather than merely reconnecting. CMAN does not perform the migration (Data Guard, RMAN, and ZDM do); it makes the migration transparent to clients. That endpoint stability — bundled with proxying, firewalling, topology-hiding, private-endpoint protection, and multiplexing in one tier — is the value a smart driver cannot reproduce.
 
 ---
 
@@ -101,7 +101,7 @@ Each use-case is an independent demo against the same deployed stack.
 5. **Connection multiplexing (PRCP).** Many client connections funnel onto fewer database sessions via Proxy Resident Connection Pooling, pool managed on the CMAN tier.
 6. **Planned-maintenance draining (AC/TAC).** A service is stopped/relocated on cluster 1; CMAN drains in-flight work at request boundaries and continues it on a surviving instance. The client running a workload sees no error.
 7. **RAC SCAN redirect, resolved server-side.** CMAN follows the SCAN redirect to a node VIP itself; the client never sees or routes to VIPs.
-8. **Transparent database upgrade.** The two clusters are paired as Active Data Guard; a rolling upgrade / switchover happens behind CMAN while a client workload keeps running. This is the "platform upgrade" headline, delivered transparently rather than as documented indirection.
+8. **Transparent platform migration and upgrade.** The two clusters are paired as Active Data Guard; a switchover — to new hardware, a patched home, or a new database version — happens behind CMAN while a client workload keeps running. Clients keep the one CMAN endpoint throughout, so the move is a server-side re-point of the proxy's routing, not a fleet-wide connection-string change. This is the "platform upgrade" headline, delivered transparently rather than as documented indirection.
 
 ---
 
@@ -248,6 +248,9 @@ Primary Oracle documentation and whitepapers underpinning the design:
 - Oracle RAC Administration — _Ensuring Application Continuity_ (FAILOVER_TYPE/RESTORE, FAN).
 - Base Database Service — editions and feature gating (RAC and Active Data Guard require Extreme Performance).
 
-```
+---
 
-```
+## Next steps
+
+- **Provision the stack** — [DEPLOY.md](DEPLOY.md): ordered `manage.py` steps from `setup` to a verified end-to-end connection.
+- **Validate the deployment** — [DEMO.md](DEMO.md): confirm the laptop reaches the database only through CMAN.
