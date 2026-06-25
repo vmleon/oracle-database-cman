@@ -1,6 +1,6 @@
 # Oracle Connection Manager (CMAN) Showcase — Design
 
-A fully deployable OCI Proof of Concept that demonstrates Oracle Connection Manager (CMAN) and its Traffic Director Mode (CMAN-TDM) as a **protocol-aware database proxy**: a single stable endpoint that does access control, service routing, protocol translation, connection multiplexing, and — backed by RAC and Active Data Guard — transparent high availability and zero-downtime database upgrades.
+A fully deployable Oracle Cloud Infrastructure (OCI) Proof of Concept that demonstrates Oracle Connection Manager (CMAN) and its Traffic Director Mode (CMAN-TDM) as a **protocol-aware database proxy**: a single stable endpoint that does access control, service routing, protocol translation, connection multiplexing, and — backed by Real Application Clusters (RAC) and Active Data Guard — transparent high availability and zero-downtime database upgrades.
 
 Where a dumb TCP relay (such as a SOCKS5 proxy) can only carry bytes to a private database, this PoC proves what a **smart, Oracle Net-aware proxy** adds on top.
 
@@ -22,14 +22,14 @@ A dumb TCP/SOCKS5 proxy can do none of the last three, because it never parses O
 
 ## Background: who owns what
 
-CMAN does not implement high availability. FAN, Application Continuity, RAC, and Active Data Guard are the **database's** machinery. CMAN-TDM is the network-tier proxy that *consumes* their signals, hides the churn behind one endpoint, and can deliver their benefits to clients that could not get them alone.
+CMAN does not implement high availability. FAN, Application Continuity, RAC, and Active Data Guard are the **database's** machinery. CMAN-TDM is the network-tier proxy that _consumes_ their signals, hides the churn behind one endpoint, and can deliver their benefits to clients that could not get them alone.
 
-| Layer | Owner | Role |
-| --- | --- | --- |
-| **RAC / Active Data Guard** | Database topology | Provides a healthy place to fail over to — another live instance or a standby. Application Continuity is meaningless without one. |
-| **FAN** (Fast Application Notification, via ONS) | Grid Infrastructure | The signaling bus: publishes service `DOWN`/`UP` and planned-maintenance "start draining" events. |
-| **AC / TAC** (Application Continuity / Transparent AC) | Database + Oracle client driver | Records a session's in-flight work and replays it on a fresh connection after failover, so the application sees no error. |
-| **CMAN-TDM** | Network proxy tier | Subscribes to FAN, drains and re-routes work, hides the topology, and can perform the continuity on the client's behalf. |
+| Layer                                                  | Owner                           | Role                                                                                                                              |
+| ------------------------------------------------------ | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **RAC / Active Data Guard**                            | Database topology               | Provides a healthy place to fail over to — another live instance or a standby. Application Continuity is meaningless without one. |
+| **FAN** (Fast Application Notification, via ONS)       | Grid Infrastructure             | The signaling bus: publishes service `DOWN`/`UP` and planned-maintenance "start draining" events.                                 |
+| **AC / TAC** (Application Continuity / Transparent AC) | Database + Oracle client driver | Records a session's in-flight work and replays it on a fresh connection after failover, so the application sees no error.         |
+| **CMAN-TDM**                                           | Network proxy tier              | Subscribes to FAN, drains and re-routes work, hides the topology, and can perform the continuity on the client's behalf.          |
 
 CMAN-TDM's distinct contributions:
 
@@ -45,15 +45,15 @@ Honest positioning: a modern driver talking directly to RAC can do AC/TAC withou
 
 OCI **Base Database Service**, two VM DB systems, each **2-node RAC**, **Enterprise Edition – Extreme Performance**.
 
-Extreme Performance is required on Base DB for multi-node RAC and is the only edition bundling Active Data Guard; Application Continuity requires RAC or Active Data Guard. So Extreme Performance is the entry price for the headline features, and both DB systems being RAC means a migration's *destination* also offers FAN/AC — letting CMAN drain off one cluster and have clients **continue** on the other, not merely reconnect.
+Extreme Performance is required on Base DB for multi-node RAC and is the only edition bundling Active Data Guard; Application Continuity requires RAC or Active Data Guard. So Extreme Performance is the entry price for the headline features, and both DB systems being RAC means a migration's _destination_ also offers FAN/AC — letting CMAN drain off one cluster and have clients **continue** on the other, not merely reconnect.
 
 Why not the lighter substrates:
 
-| Substrate | Verdict |
-| --- | --- |
-| Oracle Database Free (containers) | Caps at 2 CPU / 2 GB / 12 GB, one instance per container, **no RAC, Data Guard, AC, or TAC** — cannot demonstrate the HA/upgrade tier at all. |
-| Autonomous Database | Hides RAC/routing by design, so CMAN's SCAN-redirect and topology-hiding value can't be shown; less control over services, listeners, and maintenance timing. |
-| Base DB, 2× 2-node RAC EP | Full control of editions, services, RAC, Data Guard, and maintenance windows — every use-case is demonstrable. |
+| Substrate                         | Verdict                                                                                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Oracle Database Free (containers) | Caps at 2 CPU / 2 GB / 12 GB, one instance per container, **no RAC, Data Guard, AC, or TAC** — cannot demonstrate the HA/upgrade tier at all.                 |
+| Autonomous Database               | Hides RAC/routing by design, so CMAN's SCAN-redirect and topology-hiding value can't be shown; less control over services, listeners, and maintenance timing. |
+| Base DB, 2× 2-node RAC EP         | Full control of editions, services, RAC, Data Guard, and maintenance windows — every use-case is demonstrable.                                                |
 
 The two DB systems run as **independent clusters** by default (for routing and migration scenarios) and are **pairable as Active Data Guard** for the rolling-upgrade scenario.
 
@@ -133,15 +133,15 @@ cman-showcase/
 
 A Typer-based orchestrator — one entry point for the whole lifecycle.
 
-| Verb | Action |
-| --- | --- |
-| `setup` | Interactive: pick profile/region/compartment, SSH key, client CIDR; generate DB passwords; write `.env` and `terraform.tfvars`. |
-| `tf apply` | Provision the VCN, NSGs, two RAC DB systems, the CMAN VM, and the ops VM. Ops host self-provisions via cloud-init and runs the Ansible `cman` and `db` roles. |
-| `info` | Print endpoints and ready-to-paste connect/SSH commands. |
-| `build` / `run` | Build and run the Spring Boot client (used by the draining/upgrade demos). |
-| `demo firewall \| route \| socks \| tls \| pool \| drain \| upgrade` | Drive one use-case end to end and assert the expected outcome. |
-| `health` | Confirm an end-to-end query through CMAN. |
-| `clean --destroy` | Tear the whole stack down. |
+| Verb                                                                 | Action                                                                                                                                                        |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setup`                                                              | Interactive: pick profile/region/compartment, SSH key, client CIDR; generate DB passwords; write `.env` and `terraform.tfvars`.                               |
+| `tf apply`                                                           | Provision the VCN, NSGs, two RAC DB systems, the CMAN VM, and the ops VM. Ops host self-provisions via cloud-init and runs the Ansible `cman` and `db` roles. |
+| `info`                                                               | Print endpoints and ready-to-paste connect/SSH commands.                                                                                                      |
+| `build` / `run`                                                      | Build and run the Spring Boot client (used by the draining/upgrade demos).                                                                                    |
+| `demo firewall \| route \| socks \| tls \| pool \| drain \| upgrade` | Drive one use-case end to end and assert the expected outcome.                                                                                                |
+| `health`                                                             | Confirm an end-to-end query through CMAN.                                                                                                                     |
+| `clean --destroy`                                                    | Tear the whole stack down.                                                                                                                                    |
 
 ---
 
@@ -238,13 +238,16 @@ These were not pinned by research and are settled in the build:
 
 Primary Oracle documentation and whitepapers underpinning the design:
 
-- Oracle Net Services Administrator's Guide — *Configuring Oracle Connection Manager* and *Traffic Director Mode* (19c / 21c / 26ai).
-- Oracle Net Services Reference — *Oracle Connection Manager Parameters* (`tdm`, `rule_list`, `max_connections`, PRCP tuning).
-- CMAN-TDM whitepaper — *Oracle Database Connection Proxy for Scalable Applications*.
-- Oracle Solutions — *Secure data with a CMAN proxy in front of Autonomous Database* (TCP↔TCPS protocol switching).
+- Oracle Net Services Administrator's Guide — _Configuring Oracle Connection Manager_ and _Traffic Director Mode_ (19c / 21c / 26ai).
+- Oracle Net Services Reference — _Oracle Connection Manager Parameters_ (`tdm`, `rule_list`, `max_connections`, PRCP tuning).
+- CMAN-TDM whitepaper — _Oracle Database Connection Proxy for Scalable Applications_.
+- Oracle Solutions — _Secure data with a CMAN proxy in front of Autonomous Database_ (TCP↔TCPS protocol switching).
 - Oracle Solutions — multicloud CMAN with ONS proxy reference architecture.
 - Oracle Learn — CMAN on OCI Compute in front of Base Database Service.
 - OCI Terraform provider — `oci_database_db_system` (`node_count`, `database_edition`).
-- Oracle RAC Administration — *Ensuring Application Continuity* (FAILOVER_TYPE/RESTORE, FAN).
+- Oracle RAC Administration — _Ensuring Application Continuity_ (FAILOVER_TYPE/RESTORE, FAN).
 - Base Database Service — editions and feature gating (RAC and Active Data Guard require Extreme Performance).
+
+```
+
 ```

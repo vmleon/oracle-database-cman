@@ -18,7 +18,7 @@ brew install --cask sqlcl
 python manage.py setup
 ```
 
-Interactive: selects OCI profile, region, compartment, SSH key, and client CIDR; generates a DB password; writes `.env` and `infra/terraform/terraform.tfvars`. Nothing is edited by hand after this point.
+Interactive: selects Oracle Cloud Infrastructure (OCI) profile, region, compartment, SSH key, and client CIDR; generates a DB password; writes `.env` and `infra/terraform/terraform.tfvars`. Nothing is edited by hand after this point.
 
 ### 2. Provision infrastructure
 
@@ -26,7 +26,7 @@ Interactive: selects OCI profile, region, compartment, SSH key, and client CIDR;
 python manage.py tf apply
 ```
 
-Stands up the VCN, subnets, NSGs, the CMAN VM, the ops/bastion VM, and the RAC DB system. Also creates the `cman-poc-artifacts` Object Storage bucket and pre-authenticated requests used by the ops host bootstrap. The ops host self-provisions via cloud-init: installs Ansible, pulls the roles, and configures CMAN-TDM on the CMAN host and creates services on the database — no SSH push from the operator.
+Stands up the VCN, subnets, NSGs, the CMAN VM, the ops/bastion VM, and the Real Application Clusters (RAC) DB system. Also creates the `cman-poc-artifacts` Object Storage bucket and pre-authenticated requests used by the ops host bootstrap. The ops host self-provisions via cloud-init: installs Ansible, pulls the roles, and configures CMAN-TDM on the CMAN host and creates services on the database — no SSH push from the operator.
 
 ### 3. Stage the CMAN binaries
 
