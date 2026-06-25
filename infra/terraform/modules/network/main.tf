@@ -17,6 +17,29 @@ resource "oci_core_default_security_list" "default" {
   # no ingress rules: all ingress is governed by NSGs (client-CIDR allowlist)
 }
 
+# Private (DB) subnet security list. OCI's LaunchDbSystem validates the subnet's
+# security list (not NSGs) and requires port 22 ingress; the NSGs still enforce the
+# fine-grained allowlist.
+resource "oci_core_security_list" "private" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.this.id
+  display_name   = "cman-poc-private-sl"
+
+  egress_security_rules {
+    destination = "0.0.0.0/0"
+    protocol    = "all"
+  }
+
+  ingress_security_rules {
+    source   = var.vcn_cidr
+    protocol = "6"
+    tcp_options {
+      min = 22
+      max = 22
+    }
+  }
+}
+
 resource "oci_core_internet_gateway" "igw" {
   compartment_id = var.compartment_ocid
   vcn_id         = oci_core_vcn.this.id
@@ -30,6 +53,36 @@ resource "oci_core_route_table" "public" {
   route_rules {
     destination       = "0.0.0.0/0"
     network_entity_id = oci_core_internet_gateway.igw.id
+  }
+}
+
+# Service Gateway so the private DB subnet can reach Object Storage (LaunchDbSystem
+# requires it) without a public route.
+data "oci_core_services" "oci_services" {
+  filter {
+    name   = "name"
+    values = ["All .* Services In Oracle Services Network"]
+    regex  = true
+  }
+}
+
+resource "oci_core_service_gateway" "sgw" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.this.id
+  display_name   = "cman-poc-sgw"
+  services {
+    service_id = data.oci_core_services.oci_services.services[0].id
+  }
+}
+
+resource "oci_core_route_table" "private" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.this.id
+  display_name   = "cman-poc-private-rt"
+  route_rules {
+    destination       = data.oci_core_services.oci_services.services[0].cidr_block
+    destination_type  = "SERVICE_CIDR_BLOCK"
+    network_entity_id = oci_core_service_gateway.sgw.id
   }
 }
 
@@ -50,6 +103,8 @@ resource "oci_core_subnet" "private" {
   display_name               = "cman-poc-private-subnet"
   prohibit_public_ip_on_vnic = true
   dns_label                  = "priv"
+  route_table_id             = oci_core_route_table.private.id
+  security_list_ids          = [oci_core_security_list.private.id]
 }
 
 resource "oci_core_network_security_group" "cman" {
