@@ -26,7 +26,7 @@ Interactive: selects Oracle Cloud Infrastructure (OCI) profile, region, compartm
 python manage.py tf apply
 ```
 
-Stands up the VCN, subnets, NSGs, the CMAN VM, the ops/bastion VM, and the Real Application Clusters (RAC) DB system. Also creates the `cman-poc-artifacts` Object Storage bucket and pre-authenticated requests used by the ops host bootstrap. The ops host self-provisions via cloud-init: installs Ansible, pulls the roles, and configures CMAN-TDM on the CMAN host and creates services on the database — no SSH push from the operator.
+Stands up the Virtual Cloud Network (VCN), subnets, Network Security Groups (NSGs), the CMAN VM, the ops/bastion VM, and the Real Application Clusters (RAC) DB system. Also creates the `cman-poc-artifacts` Object Storage bucket and pre-authenticated requests used by the ops host bootstrap. The ops host self-provisions via cloud-init: installs Ansible, pulls the roles, and configures CMAN-TDM on the CMAN host and creates services on the database — no SSH push from the operator.
 
 ### 3. Stage the CMAN binaries
 

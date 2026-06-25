@@ -28,7 +28,7 @@ Then at the SQL prompt:
 select instance_name from v$instance;
 ```
 
-The result is the name of the RAC node that served the connection, for example `dbcman1` or `dbcman2`. That name comes from inside the private subnet — the laptop never communicated with it directly. The only address the laptop used was the CMAN endpoint (printed by `python manage.py info`); CMAN resolved the SCAN redirect to a node VIP server-side and forwarded the Oracle Net session into the private subnet.
+The result is the name of the RAC node that served the connection, for example `dbcman1` or `dbcman2`. That name comes from inside the private subnet — the laptop never communicated with it directly. The only address the laptop used was the CMAN endpoint (printed by `python manage.py info`); CMAN resolved the Single Client Access Name (SCAN) redirect to a node VIP server-side and forwarded the Oracle Net session into the private subnet.
 
 ### What this proves
 

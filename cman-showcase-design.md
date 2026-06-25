@@ -22,7 +22,7 @@ A dumb TCP/SOCKS5 proxy can do none of the last three, because it never parses O
 
 ## Background: who owns what
 
-CMAN does not implement high availability. FAN, Application Continuity, RAC, and Active Data Guard are the **database's** machinery. CMAN-TDM is the network-tier proxy that _consumes_ their signals, hides the churn behind one endpoint, and can deliver their benefits to clients that could not get them alone.
+CMAN does not implement high availability. Fast Application Notification (FAN), Application Continuity, RAC, and Active Data Guard are the **database's** machinery. CMAN-TDM is the network-tier proxy that _consumes_ their signals, hides the churn behind one endpoint, and can deliver their benefits to clients that could not get them alone.
 
 | Layer                                                  | Owner                           | Role                                                                                                                              |
 | ------------------------------------------------------ | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -35,7 +35,7 @@ CMAN-TDM's distinct contributions:
 
 1. **It consumes FAN and drains.** On a planned-maintenance event it stops sending new work to the affected instance, lets in-flight requests finish (bounded by `drain_timeout`), then routes onward to a surviving instance.
 2. **It provides continuity on behalf of clients that cannot.** AC/TAC normally needs a modern, correctly configured Oracle driver. CMAN-TDM can hold session state and do failover/restore itself, so even an old client (11.2+) or a non-AC app gets continuity — configured **once at the router**, not per application.
-3. **It hides the topology.** RAC's SCAN listener redirects a client to a node VIP; CMAN resolves that redirect **server-side**, and with Data Guard it fronts the role change too. The client only ever talks to CMAN.
+3. **It hides the topology.** RAC's Single Client Access Name (SCAN) listener redirects a client to a node VIP; CMAN resolves that redirect **server-side**, and with Data Guard it fronts the role change too. The client only ever talks to CMAN.
 
 Honest positioning: a modern driver talking directly to RAC can do AC/TAC without CMAN. CMAN's value is delivering it to clients that cannot, centralizing the configuration, and bundling it with proxying, firewalling, topology-hiding, private-endpoint protection, and multiplexing in one tier. The showcase states this rather than implying CMAN is required for AC.
 
@@ -66,9 +66,9 @@ flowchart TB
   subgraph Client["Client (outside OCI)"]
     APP["Spring Boot + UCP client\nconnects only to CMAN endpoint"]
   end
-  subgraph OCI["OCI VCN"]
+  subgraph OCI["OCI Virtual Cloud Network (VCN)"]
     subgraph PUB["Public subnet"]
-      CMAN["CMAN proxy VM\nOracle Net listener :1521 (+ :1523 TCPS demo)\nTraffic Director Mode\nNSG: ingress from CLIENT_CIDR only"]
+      CMAN["CMAN proxy VM\nOracle Net listener :1521 (+ :1523 TCPS demo)\nTraffic Director Mode\nNetwork Security Group (NSG): ingress from CLIENT_CIDR only"]
       OPS["Ops / bastion VM\nruns Ansible against private DB nodes\nSSH from CLIENT_CIDR only"]
     end
     subgraph PRIV["Private subnet"]
