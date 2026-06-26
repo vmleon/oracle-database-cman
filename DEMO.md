@@ -33,3 +33,7 @@ The result is the name of the RAC node that served the connection, for example `
 ### What this proves
 
 A dumb TCP relay forwards bytes to a fixed destination. CMAN parses the Oracle Net handshake, applies the `RULE_LIST` (accept/reject by source IP and service name), follows the SCAN redirect itself, and forwards the session to a live RAC node. The client configured one address and received a response from behind the proxy without any knowledge of the RAC topology.
+
+## What's next
+
+This is one of eight use-cases. The remaining seven — access-control firewall, service routing, SOCKS5 handoff, TCP↔TCPS translation, connection multiplexing, planned-maintenance draining, and transparent database upgrade — are described in [cman-showcase-design.md](cman-showcase-design.md), with the pending work to build them tracked in [BACKLOG.md](BACKLOG.md).

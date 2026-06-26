@@ -74,3 +74,7 @@ python manage.py clean --destroy
 ```
 
 Destroys all OCI infrastructure (Terraform `destroy`). Run between sessions to avoid idle costs.
+
+## Next
+
+Validate end-to-end → [DEMO.md](DEMO.md): prove the laptop reaches the database only through CMAN.

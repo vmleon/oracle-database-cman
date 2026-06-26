@@ -4,29 +4,30 @@ Oracle Connection Manager (CMAN) acts as a smart, Oracle Net-aware proxy: it par
 
 CMAN is deployed in Traffic Director Mode (TDM), the operating mode that adds connection multiplexing and continuity on top of CMAN's proxying and access control. The foundation slice deploys a single CMAN instance on Oracle Cloud Infrastructure (OCI) fronting a private 2-node Real Application Clusters (RAC) DB system. The laptop connects to one stable CMAN endpoint and never addresses the RAC nodes directly; CMAN resolves Single Client Access Name (SCAN) redirects server-side and forwards Oracle Net sessions into the private subnet.
 
+## Architecture (foundation slice)
+
 ```mermaid
-flowchart LR
-    Laptop["Laptop"] --> CMAN["CMAN proxy VM<br/>public subnet, :1521"]
-    CMAN --> RAC["2-node RAC<br/>private subnet"]
+flowchart TB
+    Laptop["Laptop<br/>connects only to the CMAN endpoint"]
+    subgraph VCN["OCI Virtual Cloud Network"]
+        subgraph PUB["Public subnet — NSG: ingress from client CIDR only"]
+            CMAN["CMAN proxy VM<br/>Traffic Director Mode, :1521<br/>RULE_LIST IP-allow"]
+            OPS["Ops / bastion VM<br/>cloud-init self-provision<br/>runs Ansible cman + db roles"]
+        end
+        subgraph PRIV["Private subnet — no client reachability"]
+            RAC["2-node RAC DB system (Extreme Performance)<br/>SCAN + node VIPs :1521<br/>health service"]
+        end
+    end
+    Laptop ==>|"Oracle Net to one stable endpoint"| CMAN
+    CMAN -->|"Oracle Net, SCAN redirect resolved server-side"| RAC
+    OPS -. "SSH provisioning" .-> RAC
 ```
 
-See [cman-showcase-design.md](cman-showcase-design.md) for the full architecture and the eight-use-case roadmap (access-control firewall, service routing, SOCKS5 handoff, TCP↔TCPS translation, connection multiplexing, planned-maintenance draining, SCAN redirect, and transparent database upgrade). [BACKLOG.md](BACKLOG.md) tracks the pending work toward that vision.
+A verified laptop→CMAN→RAC query runs `select instance_name from v$instance` through the one endpoint, returning a node name from inside the private subnet the laptop never addressed directly.
 
-## Deployed today (foundation slice)
+## Next steps
 
-- VCN with public/private subnets and NSG source-IP allowlists.
-- A single 2-node RAC DB system (Extreme Performance) in the private subnet.
-- One CMAN VM in Traffic Director Mode with an IP-allow rule, fronting the RAC SCAN.
-- An ops/bastion VM that self-provisions via cloud-init and runs the Ansible `cman` and `db` roles.
-- A `health` service on the RAC, and a verified laptop→CMAN→RAC query through the one endpoint.
-
-## Quick reference — `manage.py` verbs
-
-| Verb                        | What it does                                                                                                                                                                               |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `setup`                     | Interactive: pick OCI profile, region, compartment, SSH key, client CIDR; ask for the Oracle 19c client zip path (validated); generates DB password; writes `.env` and `terraform.tfvars`. |
-| `tf <plan\|apply\|destroy>` | Run Terraform against `infra/terraform/` using the generated tfvars.                                                                                                                       |
-| `info`                      | Print endpoints and ready-to-paste SSH and connect commands.                                                                                                                               |
-| `sql`                       | Save the `cman` SQLcl named connection on the local machine.                                                                                                                               |
-| `health`                    | Run a query through the CMAN endpoint via the saved connection and print the instance name.                                                                                                |
-| `clean [--destroy]`         | Delete generated files under `infra/terraform/generated/`; with `--destroy` also tears down all provisioned OCI infrastructure.                                                            |
+- **Provision the stack** — [DEPLOY.md](DEPLOY.md): ordered `manage.py` steps from `setup` to a verified end-to-end connection.
+- **See it work** — [DEMO.md](DEMO.md): prove the laptop reaches the database only through CMAN.
+- **The full vision** — [cman-showcase-design.md](cman-showcase-design.md): the architecture and the eight-use-case roadmap (access-control firewall, service routing, SOCKS5 handoff, TCP↔TCPS translation, connection multiplexing, planned-maintenance draining, SCAN redirect, and transparent database upgrade).
+- **What's pending** — [BACKLOG.md](BACKLOG.md): the work that grows this foundation slice into that vision.
