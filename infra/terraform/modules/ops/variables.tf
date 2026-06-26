@@ -65,6 +65,16 @@ variable "db_admin_password" {
   sensitive = true
 }
 
+variable "tdm_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "appuser_password" {
+  type      = string
+  sensitive = true
+}
+
 variable "db_name" {
   type = string
 }

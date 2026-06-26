@@ -4,3 +4,5 @@ oracle_user: oracle
 # Private (DB) subnet, invited to register services with CMAN (VNCR). Matches the
 # network module's private subnet CIDR.
 cman_db_subnet: 10.0.2.0/24
+# SEPS wallet holding the TDM proxy-user credential CMAN uses for proxy authentication.
+cman_wallet_dir: "{{ cman_home }}/network/admin/cman_wallet"

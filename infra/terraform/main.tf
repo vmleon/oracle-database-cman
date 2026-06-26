@@ -43,6 +43,8 @@ module "ops" {
   cman_public_ip       = module.cman.cman_public_ip
   db_node_private_ip   = module.db_system.db_node_private_ip
   db_admin_password    = var.db_admin_password
+  tdm_password         = var.tdm_password
+  appuser_password     = var.appuser_password
   db_name              = var.db_name
   service_name         = module.db_system.service_name
   client_cidr          = var.client_cidr

@@ -43,3 +43,34 @@
   register: rl
   changed_when: "'already registered' not in rl.stdout"
   failed_when: "'ORA-' in rl.stdout"
+
+- name: Create the app user and the TDM proxy user for Traffic Director Mode
+  ansible.builtin.shell: |
+    set -e
+    export ORACLE_HOME=$(ls -d /u01/app/oracle/product/*/dbhome_* 2>/dev/null | head -1)
+    export ORACLE_SID=$(ps -ef | grep -oE 'ora_pmon_[A-Za-z0-9]+' | head -1 | sed 's/ora_pmon_//')
+    export PATH=$ORACLE_HOME/bin:$PATH
+    DBUN=$(srvctl config database | head -1)
+    PDB=$(srvctl config service -db "$DBUN" | awk -F': ' '/Pluggable database name/{print $2; exit}')
+    sqlplus -s / as sysdba <<SQL
+    whenever sqlerror exit 1
+    alter session set container=$PDB;
+    declare
+      n number;
+    begin
+      select count(*) into n from dba_users where username='APPUSER';
+      if n = 0 then execute immediate q'[create user appuser identified by "{{ appuser_password }}"]'; end if;
+      select count(*) into n from dba_users where username='TDM';
+      if n = 0 then execute immediate q'[create user tdm identified by "{{ tdm_password }}"]'; end if;
+    end;
+    /
+    grant create session, select_catalog_role to appuser;
+    grant create session to tdm;
+    alter user appuser grant connect through tdm;
+    SQL
+  args: { executable: /bin/bash }
+  become: true
+  become_user: oracle
+  register: tdm_users
+  changed_when: true
+  failed_when: "'ORA-' in tdm_users.stdout"

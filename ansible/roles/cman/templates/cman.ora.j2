@@ -12,3 +12,10 @@ cman_proxy =
     (rule_list =
       (rule = (src = {{ cman_host }})(dst = 127.0.0.1)(srv = cmon)(act = accept))
       (rule = (src = {{ client_cidr }})(dst = *)(srv = *)(act = accept))))
+
+wallet_location =
+  (source =
+    (method = file)
+    (method_data =
+      (directory = {{ cman_wallet_dir }})))
+sqlnet.wallet_override = true

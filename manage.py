@@ -272,6 +272,8 @@ def setup():
         console.print(f"[red]Cannot use this zip: {why}[/red]")
 
     db_password = _generate_password()
+    tdm_password = _generate_password()
+    appuser_password = _generate_password()
 
     console.print(Panel(
         f"Profile:       {profile}\n"
@@ -298,6 +300,7 @@ def setup():
         "DB_NAME": db_name,
         "DB_USER": "system",
         "DB_PASSWORD": db_password,
+        "APPUSER_PASSWORD": appuser_password,
     })
     _write_tfvars({
         "oci_profile": profile,
@@ -311,6 +314,8 @@ def setup():
         "ssh_public_key": ssh_public_key,
         "ssh_private_key_path": ssh_private,
         "db_admin_password": db_password,
+        "tdm_password": tdm_password,
+        "appuser_password": appuser_password,
         "db_name": db_name,
         "cman_client_source_path": client_zip,
     })

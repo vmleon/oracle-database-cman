@@ -45,6 +45,20 @@ variable "db_admin_password" {
   sensitive = true
 }
 
+variable "tdm_password" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "Password for the TDM proxy DB user; stored in the CMAN wallet for proxy authentication"
+}
+
+variable "appuser_password" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "Password for the application DB user the client connects as through CMAN"
+}
+
 variable "db_name" {
   type    = string
   default = "dbcman"

@@ -26,6 +26,8 @@ locals {
     cman_public_ip      = var.cman_public_ip
     db_node_private_ip  = var.db_node_private_ip
     db_password         = var.db_admin_password
+    tdm_password        = var.tdm_password
+    appuser_password    = var.appuser_password
     db_name             = var.db_name
     service_name        = var.service_name
     client_cidr         = var.client_cidr
