@@ -355,7 +355,7 @@ def info():
         f"Region:       {cfg.get('OCI_REGION','?')}\n"
         f"CMAN endpoint: {cman_ip}:1521/{svc}\n"
         f"Ops host:      {ops_ip}\n"
-        f"DB user:       {cfg.get('DB_USER','system')}",
+        f"DB user:       appuser",
         title="Deployment",
     ))
     console.print("\n[bold]Tail the ops bootstrap log[/bold]")
@@ -373,8 +373,8 @@ def sql():
     if not host:
         typer.echo("No CMAN host yet — run 'tf apply' first.")
         raise typer.Exit(1)
-    user = cfg.get("DB_USER", "system")
-    pwd = cfg["DB_PASSWORD"]
+    user = "appuser"
+    pwd = cfg["APPUSER_PASSWORD"]
     svc = cfg.get("DB_SERVICE", "health")
     script = f"conn -save cman -replace -savepwd {user}/{pwd}@{host}:1521/{svc}\nEXIT;\n"
     env = {**os.environ, "TERM": "dumb"}
