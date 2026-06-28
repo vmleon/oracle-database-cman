@@ -1,25 +1,36 @@
 ---
-- name: Create health service on the RAC database
+# Transparent Application Continuity service on both RAC nodes: -failovertype AUTO enables
+# TAC, -notification TRUE publishes FAN, -drain_timeout bounds the planned-maintenance grace
+# period. Preferred on all instances so CMAN can drain work off one node onto the other.
+- name: Create or update the health service with Application Continuity attributes
   ansible.builtin.shell: |
     set -e
     export ORACLE_HOME=$(ls -d /u01/app/oracle/product/*/dbhome_* 2>/dev/null | head -1)
     export PATH=$ORACLE_HOME/bin:$PATH
     DBUN=$(srvctl config database | head -1)
     PDB=$(srvctl config service -db "$DBUN" | awk -F': ' '/Pluggable database name/{print $2; exit}')
-    if ! srvctl config service -db "$DBUN" -service health >/dev/null 2>&1; then
-      srvctl add service -db "$DBUN" -service health -pdb "$PDB" \
-        -preferred "$(srvctl status database -db "$DBUN" | awk '/is running/{print $2}' | paste -sd,)"
-    fi
-    if srvctl status service -db "$DBUN" -service health 2>/dev/null | grep -q 'is running'; then
-      echo "already started"
-    else
+    INSTS=$(srvctl status database -db "$DBUN" | awk '/^Instance/{print $2}' | paste -sd,)
+    AC="-failovertype AUTO -failover_restore AUTO -commit_outcome TRUE -notification TRUE -drain_timeout 120 -stopoption IMMEDIATE"
+    CUR=$(srvctl config service -db "$DBUN" -service health 2>/dev/null || true)
+    if [ -z "$CUR" ]; then
+      srvctl add service -db "$DBUN" -service health -pdb "$PDB" -preferred "$INSTS" $AC
       srvctl start service -db "$DBUN" -service health
+      echo CHANGED
+    elif ! echo "$CUR" | grep -qi 'Failover type: *AUTO'; then
+      srvctl modify service -db "$DBUN" -service health $AC
+      srvctl modify service -db "$DBUN" -service health -modifyconfig -preferred "$INSTS" || true
+      srvctl stop service -db "$DBUN" -service health || true
+      srvctl start service -db "$DBUN" -service health
+      echo CHANGED
+    else
+      echo unchanged
     fi
   args: { executable: /bin/bash }
   become: true
   become_user: oracle
   register: svc
-  changed_when: "'exists' not in svc.stdout and 'already' not in svc.stdout"
+  changed_when: "'CHANGED' in svc.stdout"
+  failed_when: "svc.rc != 0 or 'ORA-' in svc.stdout"
 
 - name: Register the database services with CMAN (append CMAN to remote_listener)
   ansible.builtin.shell: |

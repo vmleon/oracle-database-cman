@@ -110,6 +110,26 @@
     mode: "0644"
   notify: Reload CMAN configuration
 
+# Enables FAN event handling in CMAN's client stack so it consumes service DOWN/UP and
+# planned-maintenance drain events from the RAC and drains in-flight work.
+- name: Deploy oraaccess.xml (enable FAN events)
+  ansible.builtin.copy:
+    dest: "{{ cman_home }}/network/admin/oraaccess.xml"
+    owner: "{{ oracle_user }}"
+    group: oinstall
+    mode: "0644"
+    content: |
+      <?xml version="1.0"?>
+      <oraaccess xmlns="http://xmlns.oracle.com/oci/oraaccess"
+                 xmlns:oci="http://xmlns.oracle.com/oci/oraaccess"
+                 schemaLocation="http://xmlns.oracle.com/oci/oraaccess
+                 http://xmlns.oracle.com/oci/oraaccess.xsd">
+        <default_parameters>
+          <events>true</events>
+        </default_parameters>
+      </oraaccess>
+  notify: Reload CMAN configuration
+
 - name: Start CMAN proxy
   ansible.builtin.shell: |
     export ORACLE_HOME={{ cman_home }}
