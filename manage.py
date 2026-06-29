@@ -3,6 +3,7 @@
 import configparser
 import json
 import os
+import re
 import secrets
 import subprocess
 import urllib.request
@@ -363,6 +364,11 @@ def info():
     console.print("\n[bold]Health through CMAN (local SQLcl)[/bold]")
     console.print("python manage.py sql   # one-time: save the 'cman' connection locally")
     console.print("python manage.py health")
+    console.print("\n[bold]Resiliency demo (Java workload + Grafana)[/bold]")
+    console.print("cd demo && podman compose up -d   # InfluxDB + Grafana at localhost:3000")
+    console.print("./demo/run-workload.sh            # dumb client -> CMAN-TDM, metrics -> InfluxDB")
+    console.print("python manage.py drain            # drain the serving node; watch Grafana")
+    console.print("python manage.py restore          # bring the service back on all nodes")
 
 
 @app.command()
@@ -393,6 +399,98 @@ def health():
     )
     typer.echo(rc.stdout.strip())
     raise typer.Exit(0 if (rc.returncode == 0 and rc.stdout.strip()) else 1)
+
+
+# --- resiliency demo (Java workload + InfluxDB/Grafana) ---------------------
+
+INFLUX_BASE = "http://localhost:8086"
+INFLUX_ORG = "cman"
+INFLUX_BUCKET = "workload"
+INFLUX_TOKEN = "cman-poc-token"
+
+
+def _influx_event(kind):
+    """Write a marker point so Grafana annotates the moment (best-effort)."""
+    import time
+    line = f"cman_event,kind={kind} value=1 {int(time.time() * 1000)}"
+    url = f"{INFLUX_BASE}/api/v2/write?org={INFLUX_ORG}&bucket={INFLUX_BUCKET}&precision=ms"
+    req = urllib.request.Request(url, data=line.encode(),
+        headers={"Authorization": f"Token {INFLUX_TOKEN}", "Content-Type": "text/plain"}, method="POST")
+    try:
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        typer.echo(f"(annotation write failed: {e})")
+
+
+def _current_node(default="dbcman1"):
+    """The RAC node the workload last reported, read from InfluxDB (falls back to default)."""
+    flux = ('from(bucket:"workload")|>range(start:-5m)'
+            '|>filter(fn:(r)=>r._measurement=="cman_workload" and r._field=="latency_ms" and r.status=="ok")'
+            '|>last()|>keep(columns:["inst"])')
+    req = urllib.request.Request(f"{INFLUX_BASE}/api/v2/query?org={INFLUX_ORG}", data=flux.encode(),
+        headers={"Authorization": f"Token {INFLUX_TOKEN}", "Content-Type": "application/vnd.flux"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            for ln in reversed(r.read().decode().splitlines()):
+                if not ln or ln.startswith("#"):
+                    continue
+                val = ln.split(",")[-1].strip()
+                if val and val not in ("inst", "_value", "result"):
+                    return val
+    except Exception:
+        pass
+    return default
+
+
+def _ops_db(cfg, db_script):
+    """Run a bash script on the RAC DB node, hopping through the ops host (as oracle)."""
+    ops_ip = cfg.get("OPS_HOST")
+    key = cfg.get("SSH_PRIVATE_KEY_PATH", "~/.ssh/id_ed25519")
+    if not ops_ip:
+        typer.echo("No ops host yet — run 'tf apply' first.")
+        raise typer.Exit(1)
+    ops_cmd = ("DB=$(awk -F= '/dbnode/{print $NF}' ~/hosts.ini); "
+               "ssh -o StrictHostKeyChecking=no -i ~/private.key opc@$DB "
+               "'sudo su - oracle -c \"bash -s\"'")
+    subprocess.run(["ssh", "-i", key, f"opc@{ops_ip}", ops_cmd], input=db_script, text=True, check=True)
+
+
+_SRVCTL_ENV = ('OH=$(ls -d /u01/app/oracle/product/*/dbhome_* | head -1); '
+               'export ORACLE_HOME=$OH PATH=$OH/bin:$PATH; D=$(srvctl config database | head -1)\n')
+
+
+@app.command()
+def drain(instance: str = "", timeout: int = 60):
+    """Drain the health service off a RAC node (planned maintenance), marked in Grafana.
+
+    Stops 'health' on the node currently serving the workload, with a drain grace period, so
+    you can watch what CMAN-TDM does for the running dumb client.
+    """
+    cfg = load_config({})
+    inst = instance or _current_node()
+    # inst is interpolated into a shell command on the DB node and can originate from an
+    # InfluxDB tag, so reject anything that isn't a bare instance name.
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,30}", inst):
+        typer.echo(f"Refusing unsafe instance name: {inst!r}")
+        raise typer.Exit(2)
+    typer.echo(f"Draining health off {inst} (drain_timeout={timeout}s)...")
+    _influx_event("drain")
+    _ops_db(cfg, _SRVCTL_ENV +
+        f'srvctl stop service -db "$D" -service health -instance {inst} '
+        f'-drain_timeout {timeout} -stopoption immediate -force\n'
+        'srvctl status service -db "$D" -service health\n')
+    typer.echo(f"\nDrained off {inst}. Watch the workload fail over; 'python manage.py restore' brings it back.")
+
+
+@app.command()
+def restore():
+    """Restart the health service on all RAC nodes after a drain demo."""
+    cfg = load_config({})
+    _influx_event("restore")
+    _ops_db(cfg, _SRVCTL_ENV +
+        'srvctl start service -db "$D" -service health\n'
+        'srvctl status service -db "$D" -service health\n')
+    typer.echo("health restarted on all nodes.")
 
 
 GENERATED_DIR = TF_DIR / "generated"

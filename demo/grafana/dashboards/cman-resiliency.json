@@ -35,14 +35,14 @@
   "panels": [
     {
       "id": 1,
-      "title": "SQL round-trip latency (through CMAN-TDM)",
+      "title": "SQL round-trip latency (log scale, through CMAN-TDM)",
       "type": "timeseries",
       "datasource": { "type": "influxdb", "uid": "influxdb" },
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
       "fieldConfig": {
         "defaults": {
           "unit": "ms",
-          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never" }
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never", "scaleDistribution": { "type": "log", "log": 10 } }
         },
         "overrides": []
       },
@@ -61,22 +61,33 @@
     },
     {
       "id": 2,
-      "title": "Requests per RAC node (watch the flip on drain)",
-      "type": "timeseries",
+      "title": "Serving RAC node over time",
+      "type": "state-timeline",
       "datasource": { "type": "influxdb", "uid": "influxdb" },
       "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
-          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 60, "stacking": { "mode": "normal" } }
+          "custom": { "fillOpacity": 90, "lineWidth": 0 },
+          "color": { "mode": "fixed" },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "dbcman1": { "text": "dbcman1", "color": "green", "index": 0 },
+                "dbcman2": { "text": "dbcman2", "color": "blue", "index": 1 },
+                "error": { "text": "error", "color": "red", "index": 2 }
+              }
+            }
+          ]
         },
         "overrides": []
       },
+      "options": { "mergeValues": true, "showValue": "auto", "rowHeight": 0.9, "alignValue": "left" },
       "targets": [
         {
           "refId": "A",
           "datasource": { "type": "influxdb", "uid": "influxdb" },
-          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"ok\")\n  |> group(columns: [\"inst\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: count, createEmpty: false)\n  |> yield(name: \"count\")"
+          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\")\n  |> map(fn: (r) => ({ _time: r._time, _value: if r.status == \"error\" then \"error\" else r.inst }))\n  |> group()\n  |> sort(columns: [\"_time\"])"
         }
       ]
     },
@@ -111,6 +122,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "noValue": "0",
           "color": { "mode": "thresholds" },
           "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
         },
