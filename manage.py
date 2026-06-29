@@ -23,6 +23,10 @@ TF_DIR = Path("infra/terraform")
 ENV_FILE = Path(".env")
 TFVARS_FILE = TF_DIR / "terraform.tfvars"
 
+# CMAN runs from the Oracle client home; cman.ora names the configuration cman_proxy.
+CMAN_HOME = "/opt/oracle/product/19c/client_1"
+CMAN_CONFIG = "cman_proxy"
+
 # maps terraform output keys -> config keys
 _TF_MAP = {
     "cman_public_ip": "CMAN_HOST",
@@ -353,17 +357,23 @@ def info():
     key = cfg.get("SSH_PRIVATE_KEY_PATH", "~/.ssh/id_rsa")
     svc = cfg.get("DB_SERVICE", "health")
     console.print(Panel(
-        f"Region:       {cfg.get('OCI_REGION','?')}\n"
+        f"Region:        {cfg.get('OCI_REGION','?')}\n"
         f"CMAN endpoint: {cman_ip}:1521/{svc}\n"
-        f"Ops host:      {ops_ip}\n"
+        f"CMAN host:     {cman_ip}  (opc, SSH)\n"
+        f"Ops host:      {ops_ip}   (opc, SSH)\n"
         f"DB user:       appuser",
         title="Deployment",
     ))
-    console.print("\n[bold]Tail the ops bootstrap log[/bold]")
-    console.print(f"ssh -i {key} opc@{ops_ip} 'sudo tail -n 80 /var/log/cman-bootstrap.log'")
     console.print("\n[bold]Health through CMAN (local SQLcl)[/bold]")
     console.print("python manage.py sql   # one-time: save the 'cman' connection locally")
     console.print("python manage.py health")
+    console.print("\n[bold]SSH into the CMAN host and run cmctl[/bold]")
+    cmctl = f"export ORACLE_HOME={CMAN_HOME}; {CMAN_HOME}/bin/cmctl"
+    console.print(f"ssh -i {key} opc@{cman_ip}")
+    console.print(f"ssh -i {key} opc@{cman_ip} \"sudo su - oracle -c '{cmctl} show status  -c {CMAN_CONFIG}'\"")
+    console.print(f"ssh -i {key} opc@{cman_ip} \"sudo su - oracle -c '{cmctl} show services -c {CMAN_CONFIG}'\"")
+    console.print("\n[bold]Tail the ops bootstrap log[/bold]")
+    console.print(f"ssh -i {key} opc@{ops_ip} 'sudo tail -n 80 /var/log/cman-bootstrap.log'")
     console.print("\n[bold]Resiliency demo (Java workload + Grafana)[/bold]")
     console.print("cd demo && podman compose up -d   # InfluxDB + Grafana at localhost:3000")
     console.print("./demo/run-workload.sh            # dumb client -> CMAN-TDM, metrics -> InfluxDB")
@@ -409,10 +419,11 @@ INFLUX_BUCKET = "workload"
 INFLUX_TOKEN = "cman-poc-token"
 
 
-def _influx_event(kind):
+def _influx_event(kind, inst=None):
     """Write a marker point so Grafana annotates the moment (best-effort)."""
     import time
-    line = f"cman_event,kind={kind} value=1 {int(time.time() * 1000)}"
+    tags = f"kind={kind}" + (f",inst={inst}" if inst else "")
+    line = f"cman_event,{tags} value=1 {int(time.time() * 1000)}"
     url = f"{INFLUX_BASE}/api/v2/write?org={INFLUX_ORG}&bucket={INFLUX_BUCKET}&precision=ms"
     req = urllib.request.Request(url, data=line.encode(),
         headers={"Authorization": f"Token {INFLUX_TOKEN}", "Content-Type": "text/plain"}, method="POST")
@@ -474,7 +485,7 @@ def drain(instance: str = "", timeout: int = 60):
         typer.echo(f"Refusing unsafe instance name: {inst!r}")
         raise typer.Exit(2)
     typer.echo(f"Draining health off {inst} (drain_timeout={timeout}s)...")
-    _influx_event("drain")
+    _influx_event("drain", inst)
     # Ensure the service is up on every node first, so stopping one always leaves a
     # surviving instance to fail over to (otherwise a single-noded service goes fully down).
     _ops_db(cfg, _SRVCTL_ENV +
