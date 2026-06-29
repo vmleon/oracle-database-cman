@@ -44,10 +44,10 @@ public final class Workload {
         var props = new Properties();
         props.setProperty("user", user);
         props.setProperty("password", pass);
-        // Bound the legs so a blackholed path fails instead of hanging forever; the TDM proxy
-        // handshake is slow, so the overall login budget is generous.
+        // Bound the TCP connect, but NOT socket reads: a socket ReadTimeout also fires during
+        // the (slow) TDM logon and aborts reconnects. The query itself is bounded per-statement
+        // instead, so a dead session is detected without breaking reconnection.
         props.setProperty("oracle.net.CONNECT_TIMEOUT", "20000");
-        props.setProperty("oracle.jdbc.ReadTimeout", "30000");
         DriverManager.setLoginTimeout(120);
 
         var writeUri = URI.create(env("INFLUX_URL", "http://localhost:8086")
@@ -60,10 +60,19 @@ public final class Workload {
         System.out.println("Metrics     -> " + writeUri);
         System.out.println("Ctrl-C to stop.\n");
 
-        System.out.println(LocalTime.now().format(CLOCK) + "  connecting (CMAN-TDM handshake can take ~60s)...");
-        long c0 = System.nanoTime();
-        Connection conn = DriverManager.getConnection(jdbcUrl, props);
-        System.out.printf("%s  connected in %.0fs%n%n", LocalTime.now().format(CLOCK), (System.nanoTime() - c0) / 1e9);
+        System.out.println(LocalTime.now().format(CLOCK) + "  connecting...");
+        Connection conn = null;
+        while (conn == null) {
+            long c0 = System.nanoTime();
+            try {
+                conn = DriverManager.getConnection(jdbcUrl, props);
+                System.out.printf("%s  connected in %.1fs%n%n", LocalTime.now().format(CLOCK), (System.nanoTime() - c0) / 1e9);
+            } catch (SQLException e) {
+                System.out.printf("%s  connect failed (%.1fs): ORA-%05d %s — retrying%n",
+                        LocalTime.now().format(CLOCK), (System.nanoTime() - c0) / 1e9, e.getErrorCode(), firstLine(e.getMessage()));
+                Thread.sleep(2000);
+            }
+        }
         long downSince = 0; // epoch ms of the first failure in the current outage; 0 = healthy
 
         while (true) {
@@ -71,10 +80,13 @@ public final class Workload {
             long t0 = System.nanoTime();
             try {
                 String inst, node;
-                try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(QUERY)) {
-                    rs.next();
-                    inst = rs.getString(1);
-                    node = rs.getString(2);
+                try (Statement st = conn.createStatement()) {
+                    st.setQueryTimeout(15); // detect a dead session fast, above the ~10s first-query warmup
+                    try (ResultSet rs = st.executeQuery(QUERY)) {
+                        rs.next();
+                        inst = rs.getString(1);
+                        node = rs.getString(2);
+                    }
                 }
                 double ms = (System.nanoTime() - t0) / 1_000_000.0;
                 if (downSince != 0) {

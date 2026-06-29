@@ -475,7 +475,10 @@ def drain(instance: str = "", timeout: int = 60):
         raise typer.Exit(2)
     typer.echo(f"Draining health off {inst} (drain_timeout={timeout}s)...")
     _influx_event("drain")
+    # Ensure the service is up on every node first, so stopping one always leaves a
+    # surviving instance to fail over to (otherwise a single-noded service goes fully down).
     _ops_db(cfg, _SRVCTL_ENV +
+        'srvctl start service -db "$D" -service health\n'
         f'srvctl stop service -db "$D" -service health -instance {inst} '
         f'-drain_timeout {timeout} -stopoption immediate -force\n'
         'srvctl status service -db "$D" -service health\n')
