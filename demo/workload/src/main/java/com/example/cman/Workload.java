@@ -90,8 +90,13 @@ public final class Workload {
                 }
                 double ms = (System.nanoTime() - t0) / 1_000_000.0;
                 if (downSince != 0) {
+                    long gapMs = tsMs - downSince;
                     System.out.printf("%s  recovered after %d ms on %s%n",
-                            LocalTime.now().format(CLOCK), tsMs - downSince, inst);
+                            LocalTime.now().format(CLOCK), gapMs, inst);
+                    // The cutover gap: how long the client had no usable connection. Its own
+                    // point (no latency_ms) so the latency panel ignores it but a stat can show it.
+                    write(http, writeUri, token, "cman_workload,inst=" + tag(inst) + ",host=" + tag(node)
+                            + ",status=ok recovery_ms=" + gapMs + " " + tsMs);
                     downSince = 0;
                 }
                 System.out.printf("%s  %-10s %7.1f ms%n", LocalTime.now().format(CLOCK), inst, ms);
