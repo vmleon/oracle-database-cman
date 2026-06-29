@@ -1,0 +1,36 @@
+# Observability stack for the CMAN-TDM resiliency demo.
+# InfluxDB stores the workload metrics; Grafana visualises them.
+# Both are provisioned turnkey: `podman compose up -d`, then open http://localhost:3000.
+services:
+  influxdb:
+    image: docker.io/library/influxdb:2.7
+    container_name: cman-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: cmanpoc-admin
+      DOCKER_INFLUXDB_INIT_ORG: cman
+      DOCKER_INFLUXDB_INIT_BUCKET: workload
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: cman-poc-token
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+
+  grafana:
+    image: docker.io/grafana/grafana:11.3.0
+    container_name: cman-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - influxdb
+
+volumes:
+  influxdb-data:
