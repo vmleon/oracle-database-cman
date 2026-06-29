@@ -68,9 +68,13 @@
     cmd: "{{ cman_inventory }}/orainstRoot.sh"
     creates: /etc/oraInst.loc
 
-- name: Open the CMAN listener port in the host firewall
+- name: Configure the host firewall (open CMAN port; reject outbound TCPS so CMAN uses TCP)
   ansible.builtin.shell: |
     firewall-cmd --permanent --add-port=1521/tcp
+    # Each DB instance offers CMAN a TCPS:2484 handler alongside TCP:1521, and the TCPS
+    # gateway handshake stalls ~60s. Reject outbound 2484 with a TCP reset so the TCPS
+    # attempt fails instantly and CMAN falls back to the TCP handler.
+    firewall-cmd --permanent --direct --add-rule ipv4 filter OUTPUT 0 -p tcp --dport 2484 -j REJECT --reject-with tcp-reset
     firewall-cmd --reload
   changed_when: true
 
