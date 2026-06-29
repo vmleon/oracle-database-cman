@@ -14,17 +14,21 @@
     CUR=$(srvctl config service -db "$DBUN" -service health 2>/dev/null || true)
     if [ -z "$CUR" ]; then
       srvctl add service -db "$DBUN" -service health -pdb "$PDB" -preferred "$INSTS" $AC
-      srvctl start service -db "$DBUN" -service health
       echo CHANGED
     elif ! echo "$CUR" | grep -qi 'Failover type: *AUTO'; then
       srvctl modify service -db "$DBUN" -service health $AC
       srvctl modify service -db "$DBUN" -service health -modifyconfig -preferred "$INSTS" || true
       srvctl stop service -db "$DBUN" -service health || true
-      srvctl start service -db "$DBUN" -service health
       echo CHANGED
-    else
-      echo unchanged
     fi
+    # Ensure the service is running. A freshly added service can briefly report
+    # PRCR-1001 before CRS finishes registering the resource, so retry until up.
+    for _ in 1 2 3 4 5 6; do
+      srvctl status service -db "$DBUN" -service health 2>/dev/null | grep -q 'is running' && break
+      srvctl start service -db "$DBUN" -service health 2>/dev/null || true
+      sleep 5
+    done
+    srvctl status service -db "$DBUN" -service health
   args: { executable: /bin/bash }
   become: true
   become_user: oracle
