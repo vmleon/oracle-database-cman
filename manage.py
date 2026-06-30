@@ -5,6 +5,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import urllib.request
 import zipfile
@@ -381,6 +382,18 @@ def info():
     console.print("python manage.py restore          # bring the service back on all nodes")
 
 
+def _drop_saved_connection(name: str) -> None:
+    """Remove a SQLcl saved connection by name so a redeploy can't keep dialing a
+    stale endpoint (SQLcl only overwrites a saved connection on a successful connect)."""
+    store = Path.home() / ".dbtools" / "connections"
+    for props in store.glob("*/dbtools.properties"):
+        try:
+            if f"name={name}" in props.read_text().splitlines():
+                shutil.rmtree(props.parent, ignore_errors=True)
+        except OSError:
+            continue
+
+
 @app.command()
 def sql():
     """Create the 'cman' SQLcl saved connection on this laptop (TERM=dumb)."""
@@ -392,6 +405,7 @@ def sql():
     user = "appuser"
     pwd = cfg["APPUSER_PASSWORD"]
     svc = cfg.get("DB_SERVICE", "health")
+    _drop_saved_connection("cman")
     script = f"conn -save cman -replace -savepwd {user}/{pwd}@{host}:1521/{svc}\nEXIT;\n"
     env = {**os.environ, "TERM": "dumb"}
     subprocess.run(["sql", "/nolog"], input=script, text=True, env=env, check=True)
@@ -436,7 +450,8 @@ def _influx_event(kind, inst=None):
 def _current_node(default="dbcman1"):
     """The RAC node the workload last reported, read from InfluxDB (falls back to default)."""
     flux = ('from(bucket:"workload")|>range(start:-5m)'
-            '|>filter(fn:(r)=>r._measurement=="cman_workload" and r._field=="latency_ms" and r.status=="ok")'
+            '|>filter(fn:(r)=>r._measurement=="cman_workload" and r._field=="latency_ms" '
+            'and r.status=="ok" and r.client=="dumb")'
             '|>last()|>keep(columns:["inst"])')
     req = urllib.request.Request(f"{INFLUX_BASE}/api/v2/query?org={INFLUX_ORG}", data=flux.encode(),
         headers={"Authorization": f"Token {INFLUX_TOKEN}", "Content-Type": "application/vnd.flux"}, method="POST")
@@ -470,21 +485,12 @@ _SRVCTL_ENV = ('OH=$(ls -d /u01/app/oracle/product/*/dbhome_* | head -1); '
                'export ORACLE_HOME=$OH PATH=$OH/bin:$PATH; D=$(srvctl config database | head -1)\n')
 
 
-@app.command()
-def drain(instance: str = "", timeout: int = 60):
-    """Drain the health service off a RAC node (planned maintenance), marked in Grafana.
-
-    Stops 'health' on the node currently serving the workload, with a drain grace period, so
-    you can watch what CMAN-TDM does for the running dumb client.
-    """
-    cfg = load_config({})
-    inst = instance or _current_node()
+def _do_drain(cfg, inst, timeout):
     # inst is interpolated into a shell command on the DB node and can originate from an
     # InfluxDB tag, so reject anything that isn't a bare instance name.
     if not re.fullmatch(r"[A-Za-z0-9_]{1,30}", inst):
         typer.echo(f"Refusing unsafe instance name: {inst!r}")
         raise typer.Exit(2)
-    typer.echo(f"Draining health off {inst} (drain_timeout={timeout}s)...")
     _influx_event("drain", inst)
     # Ensure the service is up on every node first, so stopping one always leaves a
     # surviving instance to fail over to (otherwise a single-noded service goes fully down).
@@ -493,6 +499,26 @@ def drain(instance: str = "", timeout: int = 60):
         f'srvctl stop service -db "$D" -service health -instance {inst} '
         f'-drain_timeout {timeout} -stopoption immediate -force\n'
         'srvctl status service -db "$D" -service health\n')
+
+
+def _do_restore(cfg):
+    _influx_event("restore")
+    _ops_db(cfg, _SRVCTL_ENV +
+        'srvctl start service -db "$D" -service health\n'
+        'srvctl status service -db "$D" -service health\n')
+
+
+@app.command()
+def drain(instance: str = "", timeout: int = 60):
+    """Drain the health service off a RAC node (planned maintenance), marked in Grafana.
+
+    Stops 'health' on the node currently serving the workload, with a drain grace period, so
+    you can watch what CMAN-TDM does for the running clients.
+    """
+    cfg = load_config({})
+    inst = instance or _current_node()
+    typer.echo(f"Draining health off {inst} (drain_timeout={timeout}s)...")
+    _do_drain(cfg, inst, timeout)
     typer.echo(f"\nDrained off {inst}. Watch the workload fail over; 'python manage.py restore' brings it back.")
 
 
@@ -500,11 +526,33 @@ def drain(instance: str = "", timeout: int = 60):
 def restore():
     """Restart the health service on all RAC nodes after a drain demo."""
     cfg = load_config({})
-    _influx_event("restore")
-    _ops_db(cfg, _SRVCTL_ENV +
-        'srvctl start service -db "$D" -service health\n'
-        'srvctl status service -db "$D" -service health\n')
+    _do_restore(cfg)
     typer.echo("health restarted on all nodes.")
+
+
+@app.command()
+def jumps(node_a: str = "dbcman1", node_b: str = "dbcman2",
+          settle: int = 30, restore_wait: int = 20, timeout: int = 60):
+    """Choreograph a two-jump drain demo: A -> B -> back to A, annotated in Grafana.
+
+    Run both clients first (demo/run-workload.sh and demo/run-smart.sh), then watch the dashboard
+    while this runs. Uses explicit node names so the A->B->A shape holds regardless of where the
+    clients started.
+    """
+    import time
+    cfg = load_config({})
+    typer.echo(f"Two-jump flow: {node_a} -> {node_b} -> {node_a}\n")
+    typer.echo("Step 0: ensure both nodes are serving...")
+    _do_restore(cfg); time.sleep(settle)
+    typer.echo(f"Step 1: drain {node_a}  (jump to {node_b})...")
+    _do_drain(cfg, node_a, timeout); time.sleep(settle)
+    typer.echo(f"Step 2: restore {node_a}  (smart pool may rebalance back via FAN)...")
+    _do_restore(cfg); time.sleep(restore_wait)
+    typer.echo(f"Step 3: drain {node_b}  (jump back to {node_a})...")
+    _do_drain(cfg, node_b, timeout); time.sleep(settle)
+    typer.echo(f"Step 4: restore {node_b}  (both serving again).")
+    _do_restore(cfg)
+    typer.echo(f"\nDone. {node_a} -> {node_b} -> {node_a} complete.")
 
 
 GENERATED_DIR = TF_DIR / "generated"

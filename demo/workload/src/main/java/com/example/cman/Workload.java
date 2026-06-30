@@ -1,9 +1,5 @@
 package com.example.cman;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -14,20 +10,24 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Properties;
 
+import static com.example.cman.Telemetry.env;
+import static com.example.cman.Telemetry.firstLine;
+import static com.example.cman.Telemetry.require;
+import static com.example.cman.Telemetry.tag;
+
 /**
- * Dumb JDBC client: one plain connection through the CMAN-TDM endpoint — no UCP, no
- * Application Continuity. Each tick it asks the database which RAC node served the call
- * and how long the round trip took, prints it, and ships a sample to InfluxDB. Drain a
- * node while this runs to see what CMAN-TDM does for a client that has no continuity
- * logic of its own.
+ * Dumb JDBC client: plain connections through the CMAN-TDM endpoint — no UCP, no Application
+ * Continuity. THREADS independent connections (default 1), each tick asking which RAC node served
+ * the call and the round-trip time, shipping a sample tagged client=dumb to InfluxDB. Drain a node
+ * while this runs to see what CMAN-TDM does for a client with no continuity logic of its own.
  */
 public final class Workload {
 
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
 
-    // SYS_CONTEXT needs no privileges, so the dumb appuser stays minimal. A query against
-    // dual does no real DB work, so the measured time is essentially the CMAN round trip.
-    private static final String QUERY = """
+    // SYS_CONTEXT needs no privileges, so the dumb appuser stays minimal. A query against dual does
+    // no real DB work, so the measured time is essentially the CMAN round trip.
+    static final String QUERY = """
         select sys_context('USERENV','INSTANCE_NAME'),
                sys_context('USERENV','SERVER_HOST')
         from dual""";
@@ -39,42 +39,32 @@ public final class Workload {
         var user = env("DB_USER", "appuser");
         var pass = require("APPUSER_PASSWORD");
         var intervalMs = Long.parseLong(env("INTERVAL_MS", "1000"));
+        var threads = Integer.parseInt(env("THREADS", "1"));
 
         var jdbcUrl = "jdbc:oracle:thin:@//" + host + ":" + port + "/" + service;
         var props = new Properties();
         props.setProperty("user", user);
         props.setProperty("password", pass);
-        // Bound the TCP connect, but NOT socket reads: a socket ReadTimeout also fires during
-        // the (slow) TDM logon and aborts reconnects. The query itself is bounded per-statement
-        // instead, so a dead session is detected without breaking reconnection.
+        // Bound the TCP connect, but NOT socket reads: a socket ReadTimeout also fires during the
+        // (slow) TDM logon and aborts reconnects. The query is bounded per-statement instead, so a
+        // dead session is detected without breaking reconnection.
         props.setProperty("oracle.net.CONNECT_TIMEOUT", "20000");
         DriverManager.setLoginTimeout(120);
 
-        var writeUri = URI.create(env("INFLUX_URL", "http://localhost:8086")
-                + "/api/v2/write?org=" + env("INFLUX_ORG", "cman")
-                + "&bucket=" + env("INFLUX_BUCKET", "workload") + "&precision=ms");
-        var token = env("INFLUX_TOKEN", "cman-poc-token");
-        var http = HttpClient.newHttpClient();
-
-        System.out.println("Dumb client -> " + jdbcUrl + " as " + user);
-        System.out.println("Metrics     -> " + writeUri);
+        var telemetry = new Telemetry();
+        System.out.println("Dumb client (" + threads + " thread(s)) -> " + jdbcUrl + " as " + user);
         System.out.println("Ctrl-C to stop.\n");
 
-        System.out.println(LocalTime.now().format(CLOCK) + "  connecting...");
-        Connection conn = null;
-        while (conn == null) {
-            long c0 = System.nanoTime();
-            try {
-                conn = DriverManager.getConnection(jdbcUrl, props);
-                System.out.printf("%s  connected in %.1fs%n%n", LocalTime.now().format(CLOCK), (System.nanoTime() - c0) / 1e9);
-            } catch (SQLException e) {
-                System.out.printf("%s  connect failed (%.1fs): ORA-%05d %s — retrying%n",
-                        LocalTime.now().format(CLOCK), (System.nanoTime() - c0) / 1e9, e.getErrorCode(), firstLine(e.getMessage()));
-                Thread.sleep(2000);
-            }
+        for (int i = 1; i <= threads; i++) {
+            int id = i;
+            new Thread(() -> runWorker(id, jdbcUrl, props, intervalMs, telemetry), "dumb-" + id).start();
         }
-        long downSince = 0; // epoch ms of the first failure in the current outage; 0 = healthy
+    }
 
+    private static void runWorker(int id, String jdbcUrl, Properties props, long intervalMs, Telemetry telemetry) {
+        Connection conn = connect(id, jdbcUrl, props);
+        if (conn == null) return;
+        long downSince = 0; // epoch ms of the first failure in the current outage; 0 = healthy
         while (true) {
             long tsMs = Instant.now().toEpochMilli();
             long t0 = System.nanoTime();
@@ -91,28 +81,49 @@ public final class Workload {
                 double ms = (System.nanoTime() - t0) / 1_000_000.0;
                 if (downSince != 0) {
                     long gapMs = tsMs - downSince;
-                    System.out.printf("%s  recovered after %d ms on %s%n",
-                            LocalTime.now().format(CLOCK), gapMs, inst);
-                    // The cutover gap: how long the client had no usable connection. Its own
-                    // point (no latency_ms) so the latency panel ignores it but a stat can show it.
-                    write(http, writeUri, token, "cman_workload,inst=" + tag(inst) + ",host=" + tag(node)
+                    System.out.printf("%s  [dumb-%d] recovered after %d ms on %s%n",
+                            LocalTime.now().format(CLOCK), id, gapMs, inst);
+                    telemetry.write("cman_workload,client=dumb,inst=" + tag(inst) + ",host=" + tag(node)
                             + ",status=ok recovery_ms=" + gapMs + " " + tsMs);
                     downSince = 0;
                 }
-                System.out.printf("%s  %-10s %7.1f ms%n", LocalTime.now().format(CLOCK), inst, ms);
-                write(http, writeUri, token, "cman_workload,inst=" + tag(inst) + ",host=" + tag(node)
+                System.out.printf("%s  [dumb-%d] %-10s %7.1f ms%n", LocalTime.now().format(CLOCK), id, inst, ms);
+                telemetry.write("cman_workload,client=dumb,inst=" + tag(inst) + ",host=" + tag(node)
                         + ",status=ok latency_ms=" + ms + " " + tsMs);
             } catch (SQLException e) {
                 double ms = (System.nanoTime() - t0) / 1_000_000.0;
                 if (downSince == 0) downSince = tsMs;
-                System.out.printf("%s  ERROR ORA-%05d %s%n",
-                        LocalTime.now().format(CLOCK), e.getErrorCode(), firstLine(e.getMessage()));
-                write(http, writeUri, token, "cman_workload,inst=none,host=none,status=error latency_ms="
+                System.out.printf("%s  [dumb-%d] ERROR ORA-%05d %s%n",
+                        LocalTime.now().format(CLOCK), id, e.getErrorCode(), firstLine(e.getMessage()));
+                telemetry.write("cman_workload,client=dumb,inst=none,host=none,status=error latency_ms="
                         + ms + ",err_code=" + e.getErrorCode() + "i " + tsMs);
                 conn = reconnectQuietly(jdbcUrl, props, conn);
             }
-            System.out.flush();
-            Thread.sleep(intervalMs);
+            try {
+                Thread.sleep(intervalMs);
+            } catch (InterruptedException ie) {
+                return;
+            }
+        }
+    }
+
+    private static Connection connect(int id, String url, Properties props) {
+        while (true) {
+            long c0 = System.nanoTime();
+            try {
+                Connection conn = DriverManager.getConnection(url, props);
+                System.out.printf("%s  [dumb-%d] connected in %.1fs%n",
+                        LocalTime.now().format(CLOCK), id, (System.nanoTime() - c0) / 1e9);
+                return conn;
+            } catch (SQLException e) {
+                System.out.printf("%s  [dumb-%d] connect failed (%.1fs): ORA-%05d %s — retrying%n",
+                        LocalTime.now().format(CLOCK), id, (System.nanoTime() - c0) / 1e9, e.getErrorCode(), firstLine(e.getMessage()));
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException ie) {
+                    return null;
+                }
+            }
         }
     }
 
@@ -123,36 +134,5 @@ public final class Workload {
         } catch (SQLException e) {
             return old; // still down; the closed connection makes the next tick throw and retry
         }
-    }
-
-    private static void write(HttpClient http, URI uri, String token, String line) {
-        var req = HttpRequest.newBuilder(uri)
-                .header("Authorization", "Token " + token)
-                .header("Content-Type", "text/plain; charset=utf-8")
-                .POST(HttpRequest.BodyPublishers.ofString(line))
-                .build();
-        http.sendAsync(req, HttpResponse.BodyHandlers.discarding())
-                .exceptionally(ex -> { System.err.println("influx write failed: " + ex.getMessage()); return null; });
-    }
-
-    private static String tag(String v) {
-        return v == null ? "unknown" : v.replace(" ", "\\ ").replace(",", "\\,").replace("=", "\\=");
-    }
-
-    private static String firstLine(String s) {
-        if (s == null) return "";
-        int nl = s.indexOf('\n');
-        return nl < 0 ? s : s.substring(0, nl);
-    }
-
-    private static String env(String key, String def) {
-        var v = System.getenv(key);
-        return (v == null || v.isBlank()) ? def : v;
-    }
-
-    private static String require(String key) {
-        var v = System.getenv(key);
-        if (v == null || v.isBlank()) throw new IllegalStateException("Missing env var: " + key);
-        return v;
     }
 }

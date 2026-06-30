@@ -3,7 +3,10 @@
     "list": [
       {
         "builtIn": 1,
-        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
         "enable": true,
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
@@ -12,7 +15,10 @@
       },
       {
         "name": "Drain events",
-        "datasource": { "type": "influxdb", "uid": "influxdb" },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
         "enable": true,
         "iconColor": "red",
         "target": {
@@ -26,40 +32,81 @@
   "graphTooltip": 1,
   "title": "CMAN-TDM Resiliency",
   "uid": "cman-resiliency",
-  "tags": ["cman", "oracle"],
+  "tags": [
+    "cman",
+    "oracle"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
-  "time": { "from": "now-15m", "to": "now" },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
   "refresh": "5s",
   "panels": [
     {
       "id": 1,
       "title": "SQL round-trip latency (log scale, through CMAN-TDM)",
       "type": "timeseries",
-      "datasource": { "type": "influxdb", "uid": "influxdb" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "ms",
-          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0, "showPoints": "never", "spanNulls": false, "scaleDistribution": { "type": "log", "log": 10 } }
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": false,
+            "scaleDistribution": {
+              "type": "log",
+              "log": 10
+            }
+          }
         },
         "overrides": [
           {
-            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
             "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
-              { "id": "custom.lineWidth", "value": 2 },
-              { "id": "custom.showPoints", "value": "always" },
-              { "id": "custom.pointSize", "value": 6 }
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 6
+              }
             ]
           },
           {
-            "matcher": { "id": "byFrameRefID", "options": "A" },
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
             "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-blue" } },
-              { "id": "custom.lineWidth", "value": 1 },
-              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [6, 6] } }
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    6,
+                    6
+                  ]
+                }
+              }
             ]
           }
         ]
@@ -67,45 +114,84 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"ok\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> set(key: \"_field\", value: \"mean\")\n  |> yield(name: \"mean\")"
         },
         {
           "refId": "B",
-          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"ok\")\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: true)\n  |> set(key: \"_field\", value: \"max\")\n  |> yield(name: \"max\")"
         }
       ]
     },
     {
       "id": 2,
-      "title": "Serving RAC node over time",
+      "title": "Serving RAC node (dumb client)",
       "type": "state-timeline",
-      "datasource": { "type": "influxdb", "uid": "influxdb" },
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
       "fieldConfig": {
         "defaults": {
-          "custom": { "fillOpacity": 90, "lineWidth": 0 },
-          "color": { "mode": "fixed" },
+          "custom": {
+            "fillOpacity": 90,
+            "lineWidth": 0
+          },
+          "color": {
+            "mode": "fixed"
+          },
           "mappings": [
             {
               "type": "value",
               "options": {
-                "dbcman1": { "text": "dbcman1", "color": "green", "index": 0 },
-                "dbcman2": { "text": "dbcman2", "color": "blue", "index": 1 },
-                "error": { "text": "error", "color": "red", "index": 2 }
+                "dbcman1": {
+                  "text": "dbcman1",
+                  "color": "green",
+                  "index": 0
+                },
+                "dbcman2": {
+                  "text": "dbcman2",
+                  "color": "blue",
+                  "index": 1
+                },
+                "error": {
+                  "text": "error",
+                  "color": "red",
+                  "index": 2
+                }
               }
             }
           ]
         },
         "overrides": []
       },
-      "options": { "mergeValues": true, "showValue": "auto", "rowHeight": 0.9, "alignValue": "left" },
+      "options": {
+        "mergeValues": true,
+        "showValue": "auto",
+        "rowHeight": 0.9,
+        "alignValue": "left"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "influxdb", "uid": "influxdb" },
-          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\")\n  |> map(fn: (r) => ({ _time: r._time, _value: if r.status == \"error\" then \"error\" else r.inst }))\n  |> group()\n  |> sort(columns: [\"_time\"])"
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.client == \"dumb\")\n  |> map(fn: (r) => ({ _time: r._time, _value: if r.status == \"error\" then \"error\" else r.inst }))\n  |> group()\n  |> sort(columns: [\"_time\"])"
         }
       ]
     },
@@ -113,22 +199,40 @@
       "id": 3,
       "title": "Errors per window",
       "type": "timeseries",
-      "datasource": { "type": "influxdb", "uid": "influxdb" },
-      "gridPos": { "h": 9, "w": 8, "x": 12, "y": 9 },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 12,
+        "y": 9
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
           "decimals": 0,
           "min": 0,
-          "color": { "mode": "fixed", "fixedColor": "red" },
-          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 70 }
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70
+          }
         },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"error\")\n  |> aggregateWindow(every: v.windowPeriod, fn: count, createEmpty: false)\n  |> set(key: \"_field\", value: \"errors\")\n  |> yield(name: \"errors\")"
         }
       ]
@@ -137,47 +241,260 @@
       "id": 4,
       "title": "Total errors",
       "type": "stat",
-      "datasource": { "type": "influxdb", "uid": "influxdb" },
-      "gridPos": { "h": 9, "w": 4, "x": 20, "y": 9 },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 4,
+        "x": 20,
+        "y": 9
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
           "noValue": "0",
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "reduceOptions": { "calcs": ["sum"] }, "colorMode": "background", "graphMode": "none" },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"error\")\n  |> count()\n  |> set(key: \"_field\", value: \"errors\")\n  |> yield(name: \"errors\")"
         }
       ]
     },
     {
       "id": 5,
-      "title": "Cutover gap (client-visible outage)",
+      "title": "Reconnect outage (error-based)",
       "type": "stat",
-      "datasource": { "type": "influxdb", "uid": "influxdb" },
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 18 },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 18
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "ms",
           "noValue": "no gap",
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 3000 } ] }
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3000
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "reduceOptions": { "calcs": ["max"] }, "colorMode": "background", "graphMode": "none" },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "max"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "influxdb", "uid": "influxdb" },
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"recovery_ms\")\n  |> max()\n  |> set(key: \"_field\", value: \"recovery_ms\")\n  |> yield(name: \"recovery_ms\")"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Max stall (ms)",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "0",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 5000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "max"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"ok\")\n  |> group(columns: [\"client\"])\n  |> max()\n  |> set(key: \"_field\", value: \"max_stall\")\n  |> yield(name: \"max_stall\")"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Smart pool distribution by node (UCP + FAN)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dbcman1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dbcman2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"ok\" and r.client == \"smart\")\n  |> group(columns: [\"inst\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: count, createEmpty: true)\n  |> yield(name: \"count\")"
         }
       ]
     }

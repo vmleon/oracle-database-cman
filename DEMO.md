@@ -13,6 +13,7 @@ SQLcl / `srvctl` reference, and the configuration primitives — see [REFERENCE.
 | `python manage.py health`                           | Run `select instance_name from v$instance` through the CMAN endpoint.     |
 | `python manage.py drain [--instance N --timeout S]` | Drain the `health` service off the serving RAC node; mark it in Grafana.  |
 | `python manage.py restore`                          | Restart `health` on all RAC nodes after a drain.                          |
+| `python manage.py jumps`                            | Choreograph the two-jump flow A→B→A (drain/restore/drain/restore).        |
 
 Run `python manage.py info` first — it prints the live endpoints and the exact SSH, cmctl, and
 demo commands for the current deployment, so you can copy-paste rather than transcribe.
@@ -56,40 +57,57 @@ ssh -i <key> opc@<cman_ip> "sudo su - oracle -c 'export ORACLE_HOME=$CH; $CH/bin
 TDM mode and connection counts. `python manage.py info` prints these commands with the live host
 filled in. The cmctl reference is in [REFERENCE.md](REFERENCE.md).
 
-## Resiliency: drain a node under load
+## Resiliency: drain nodes under load, dumb vs smart
 
-A dumb Java client (plain JDBC, no connection pool, no Application Continuity) runs a steady
-workload through CMAN-TDM and ships metrics to InfluxDB; Grafana plots response time, errors, and
-which RAC node served each query. Draining a node mid-run shows what CMAN-TDM does for a client
-that has no continuity logic of its own.
+Two Java clients run the same steady workload through CMAN-TDM and ship metrics to InfluxDB; Grafana
+plots response time, the serving node, errors, and the smart pool's distribution across nodes:
 
-Bring up the observability stack and start the workload:
+- **Dumb client** (`run-workload.sh`) — plain JDBC, one connection, no pool, no Application
+  Continuity. `client=dumb`, single-threaded by default.
+- **Smart client** (`run-smart.sh`) — a UCP pool (8 connections) with Application Continuity replay
+  and FAN enabled. `client=smart`.
+
+Bring up the stack and start both clients (each in its own terminal):
 
 ```bash
 cd demo && podman compose up -d   # InfluxDB + Grafana at http://localhost:3000
-./demo/run-workload.sh            # dumb client -> CMAN-TDM; metrics -> InfluxDB
+./demo/run-workload.sh            # dumb client  -> CMAN-TDM; metrics -> InfluxDB
+./demo/run-smart.sh               # smart client -> CMAN-TDM; metrics -> InfluxDB
 ```
 
-Open Grafana (anonymous, no login) and watch the **CMAN-TDM Resiliency** dashboard fill: steady
-latency and a serving-node timeline on whichever instance the session landed on. Then drain that
-node:
+Open Grafana (anonymous, no login), the **CMAN-TDM Resiliency** dashboard, then run the two-jump
+flow:
 
 ```bash
-python manage.py drain      # stop health on the serving node, with a drain grace period
-python manage.py restore    # restart health on all nodes when done
+python manage.py jumps      # A -> B -> back to A, with watch pauses and Grafana annotations
 ```
 
-`drain` reads the serving node from InfluxDB (override with `--instance dbcman2`, grace period with
-`--timeout 90`), writes a `cman_event` annotation so the dashboard draws a line at the drain, then
-stops `health` on that instance with a `drain_timeout`. It first ensures `health` is up on every
-node, so stopping one always leaves a survivor to route to.
+`jumps` runs `restore`, drains node A, restores A, drains node B, restores B — each step writing a
+`cman_event` annotation. It uses explicit node names (`--node-a dbcman1 --node-b dbcman2`) and pauses
+(`--settle`, `--restore-wait`) so the A→B→A shape is easy to watch. The single-step `drain` /
+`restore` commands still exist for driving it by hand; `drain` reads the dumb client's current node
+from InfluxDB (override with `--instance dbcman2`, grace with `--timeout 90`).
 
-**What the dashboard shows.** CMAN reroutes _new_ connections to the surviving node immediately —
-it learns the topology from service registration, no client change. The dumb client's _existing_
-session, having no continuity logic, sees its in-flight query interrupted and reconnects through
-CMAN to the survivor; the gap shows as a latency spike and a `recovery_ms` cutover stat. That gap
-is the motivation for a continuity-aware client (UCP / Application Continuity), which CMAN-TDM
-carries transparently — the stable endpoint never changes either way.
+### What the charts teach
+
+- **Blocked, but no error (the dumb client).** On a planned drain, CMAN-TDM holds the in-flight
+  request, re-establishes the backend on the survivor, and completes the _same_ read query there —
+  so the dumb client sees **one slow query (~20 s), `status=ok`, zero errors**: a latency event, not
+  an outage. Single-threaded, that one call blocks all telemetry, so the latency panel shows a
+  **blank gap** — which is the client being busy, not downtime. Raise `THREADS` on the dumb client
+  to turn the blank gap into "one thread stalls while others keep reporting".
+- **"Reconnect outage" vs "Max stall".** _Reconnect outage (error-based)_ is `recovery_ms`, written
+  only after a query actually errors and a later one succeeds — for a TDM-absorbed drain it reads
+  `no gap` because there was no error. _Max stall (ms)_ is `max(latency_ms)` and shows the real
+  ~20 s the dumb client was blocked. Read them together.
+- **Smart client.** Application Continuity replays the in-flight query on the survivor, so the smart
+  client rides the same drain with a small blip instead of a 20 s stall. The **Smart pool
+  distribution by node** panel shows its 8 pooled connections draining off the node and rebalancing
+  across the cluster — the binary single-connection view a dumb client can't show.
+- **No failback for the dumb client.** RAC never migrates a live session back; the dumb connection
+  stays on whichever node it last moved to. The smart pool rebalances on FAN/up events. The
+  two-jump flow uses an explicit drain of the _other_ node to force the trip home, so both clients
+  visibly return to the origin.
 
 The observability stack details (credentials, metric schema, teardown) are in
 [demo/README.md](demo/README.md).
