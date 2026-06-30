@@ -11,9 +11,8 @@ SQLcl / `srvctl` reference, and the configuration primitives — see [REFERENCE.
 | `python manage.py info`                             | Print endpoints and ready-to-paste connect / SSH / cmctl / demo commands. |
 | `python manage.py sql`                              | Save the `cman` SQLcl named connection on this laptop (one-time).         |
 | `python manage.py health`                           | Run `select instance_name from v$instance` through the CMAN endpoint.     |
-| `python manage.py drain [--instance N --timeout S]` | Drain the `health` service off the serving RAC node; mark it in Grafana.  |
+| `python manage.py drain [--instance N --timeout S]` | Drain the `health` service off a RAC node; mark it in Grafana.            |
 | `python manage.py restore`                          | Restart `health` on all RAC nodes after a drain.                          |
-| `python manage.py jumps`                            | Choreograph the two-jump flow A→B→A (drain/restore/drain/restore).        |
 
 Run `python manage.py info` first — it prints the live endpoints and the exact SSH, cmctl, and
 demo commands for the current deployment, so you can copy-paste rather than transcribe.
@@ -62,7 +61,7 @@ filled in. The cmctl reference is in [REFERENCE.md](REFERENCE.md).
 Two Java clients run the same steady workload through CMAN-TDM and ship metrics to InfluxDB; Grafana
 plots response time, the serving node, errors, and the smart pool's distribution across nodes:
 
-- **Dumb client** (`run-workload.sh`) — plain JDBC, one connection, no pool, no Application
+- **Dumb client** (`run-dumb.sh`) — plain JDBC, one connection, no pool, no Application
   Continuity. `client=dumb`, single-threaded by default.
 - **Smart client** (`run-smart.sh`) — a UCP pool (8 connections) with Application Continuity replay
   and FAN enabled. `client=smart`.
@@ -71,43 +70,44 @@ Bring up the stack and start both clients (each in its own terminal):
 
 ```bash
 cd demo && podman compose up -d   # InfluxDB + Grafana at http://localhost:3000
-./demo/run-workload.sh            # dumb client  -> CMAN-TDM; metrics -> InfluxDB
+./demo/run-dumb.sh                # dumb client  -> CMAN-TDM; metrics -> InfluxDB
 ./demo/run-smart.sh               # smart client -> CMAN-TDM; metrics -> InfluxDB
 ```
 
-Open Grafana (anonymous, no login), the **CMAN-TDM Resiliency** dashboard, then run the two-jump
-flow:
+Open Grafana (anonymous, no login) and the **CMAN-TDM Resiliency** dashboard. Then drive the drain
+by hand, one step at a time, watching the dashboard react before moving on:
 
 ```bash
-python manage.py jumps      # A -> B -> back to A, with watch pauses and Grafana annotations
+python manage.py drain --instance dbcman1   # drain A: clients move to dbcman2
+python manage.py restore                     # restore A: both nodes serving again
+python manage.py drain --instance dbcman2   # drain B: clients move to dbcman1
+python manage.py restore                     # restore B: both nodes serving again
 ```
 
-`jumps` runs `restore`, drains node A, restores A, drains node B, restores B — each step writing a
-`cman_event` annotation. It uses explicit node names (`--node-a dbcman1 --node-b dbcman2`) and pauses
-(`--settle`, `--restore-wait`) so the A→B→A shape is easy to watch. The single-step `drain` /
-`restore` commands still exist for driving it by hand; `drain` reads the dumb client's current node
-from InfluxDB (override with `--instance dbcman2`, grace with `--timeout 90`).
+Each `drain` writes a `cman_event` annotation (red line on every time panel) and stops `health` on
+that instance with a grace period (`--timeout`, default 60 s), leaving the survivor serving. `restore`
+restarts `health` on **all** nodes, so the same command brings each node back. Omit `--instance` to
+drain whichever node currently serves the dumb client (read from InfluxDB).
 
 ### What the charts teach
 
 - **Blocked, but no error (the dumb client).** On a planned drain, CMAN-TDM holds the in-flight
   request, re-establishes the backend on the survivor, and completes the _same_ read query there —
-  so the dumb client sees **one slow query (~20 s), `status=ok`, zero errors**: a latency event, not
-  an outage. Single-threaded, that one call blocks all telemetry, so the latency panel shows a
-  **blank gap** — which is the client being busy, not downtime. Raise `THREADS` on the dumb client
-  to turn the blank gap into "one thread stalls while others keep reporting".
-- **"Reconnect outage" vs "Max stall".** _Reconnect outage (error-based)_ is `recovery_ms`, written
-  only after a query actually errors and a later one succeeds — for a TDM-absorbed drain it reads
-  `no gap` because there was no error. _Max stall (ms)_ is `max(latency_ms)` and shows the real
-  ~20 s the dumb client was blocked. Read them together.
+  so the dumb client sees **one slow query, `status=ok`, zero errors**: a latency event, not an
+  outage. It shows on **SQL round-trip latency per client** as a brief spike; single-threaded, that
+  one blocked call also stops telemetry, leaving a short **gap** — the client being busy, not
+  downtime. Raise `THREADS` on the dumb client to turn the gap into "one thread stalls while others
+  keep reporting".
 - **Smart client.** Application Continuity replays the in-flight query on the survivor, so the smart
-  client rides the same drain with a small blip instead of a 20 s stall. The **Smart pool
-  distribution by node** panel shows its 8 pooled connections draining off the node and rebalancing
-  across the cluster — the binary single-connection view a dumb client can't show.
+  client rides the same drain with a small blip. **Smart pool spread across nodes** shows its 8
+  pooled connections serving from both nodes at once and shifting their share onto the survivor — the
+  single-connection view a dumb client can't show.
+- **Zero errors.** **Total errors** stays at 0 throughout: every drain is absorbed, by TDM for the
+  dumb client and by AC replay for the smart one. A drain is never an outage here.
 - **No failback for the dumb client.** RAC never migrates a live session back; the dumb connection
-  stays on whichever node it last moved to. The smart pool rebalances on FAN/up events. The
-  two-jump flow uses an explicit drain of the _other_ node to force the trip home, so both clients
-  visibly return to the origin.
+  stays on whichever node it last moved to — visible on **Serving RAC node — dumb client** as it
+  moves to the survivor and stays. Draining the _other_ node (step B above) is what forces it back,
+  so the connection visibly returns to the origin.
 
 The continuity mechanics behind these charts — FAN / FCF / ONS, where each runs, and why dumb and
 smart diverge on the same drain — are in [CONTINUITY.md](CONTINUITY.md). The observability stack

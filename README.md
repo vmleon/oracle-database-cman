@@ -68,7 +68,7 @@ client** (UCP pool + Application Continuity) adds in-flight replay.
 
 ![CMAN-TDM Resiliency dashboard during a two-jump drain](images/dashboard.png)
 
-The capture above is a two-jump drain (`dbcman1` → `dbcman2` → `dbcman1`), with the red **Drain
+The capture above is a drain sequence (`dbcman1` → `dbcman2` → `dbcman1`), with the red **Drain
 events** annotations marking each step. What each panel shows:
 
 - **SQL round-trip latency per client** — steady state sits in a tight ~100 ms band for both
@@ -83,8 +83,8 @@ events** annotations marking each step. What each panel shows:
   a-time view.
 - **Total errors** — the headline: **zero** across both clients. Every drain was absorbed.
 
-The runbook for reproducing this — starting both clients and driving the `jumps` flow — is in
-[DEMO.md](DEMO.md).
+The runbook for reproducing this — starting both clients and driving the drain/restore steps by
+hand — is in [DEMO.md](DEMO.md).
 
 ## Substrate
 

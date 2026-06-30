@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the SMART Java client (UCP pool + Application Continuity + FAN) against the live CMAN
 # endpoint, shipping metrics tagged client=smart to the local InfluxDB. Run this alongside
-# run-workload.sh (the dumb client) to compare them on the same dashboard.
+# run-dumb.sh (the dumb client) to compare them on the same dashboard.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"

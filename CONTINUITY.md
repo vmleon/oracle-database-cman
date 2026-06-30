@@ -114,14 +114,14 @@ What each attribute buys, in this demo:
 
 A drain is just `srvctl stop service -service health -instance dbcman1 -drain_timeout ...`; restore is
 `srvctl start service -service health`. The cluster keeps `health` running on the other node
-throughout. `manage.py drain` / `restore` / `jumps` wrap exactly these calls.
+throughout. `manage.py drain` / `restore` wrap exactly these calls.
 
 ## Dumb vs. smart on the same drain
 
 Both clients run the identical query through the identical CMAN endpoint. The difference is entirely
 in what the _client_ brings.
 
-|                                 | **Dumb client** (`run-workload.sh`)                     | **Smart client** (`run-smart.sh`)        |
+|                                 | **Dumb client** (`run-dumb.sh`)                         | **Smart client** (`run-smart.sh`)        |
 | ------------------------------- | ------------------------------------------------------- | ---------------------------------------- |
 | Driver                          | plain JDBC, single connection                           | UCP pool (8 connections)                 |
 | FAN consumer                    | none                                                    | FCF (in-band via CMAN-TDM)               |
@@ -167,13 +167,13 @@ continuity with proactive pool rebalancing needs a continuity-aware driver consu
   TDM gateway pays a one-time cost while the proxy-auth gateway pool establishes; it can exceed the
   query timeout and shows the same "slow query, no error" shape, triggered by a cold gateway rather
   than a drain. Steady-state queries do not pay it.
-- **`Reconnect outage` reads `no gap` for a clean drain.** That metric (`recovery_ms`) is written
-  only after a query actually _errors_ and a later one succeeds. A TDM-absorbed drain produces no
-  error, so it correctly reports `no gap`. `Max stall (ms)` (`max(latency_ms)`) is the metric that
-  shows the real ~20 s the dumb client was blocked. Read the two together.
+- **A clean drain produces no error, only latency.** A query errors only if the backend drops
+  mid-flight; a TDM-absorbed drain instead holds the read and finishes it on the survivor, so
+  `status` stays `ok` and the cost shows up purely as a `latency_ms` spike (the real ~20 s the dumb
+  client was blocked) — not as an error.
 - **No failback for the dumb client.** RAC never migrates a live session back to its origin; the
-  dumb connection stays wherever it last moved. The smart pool rebalances on FAN _up_ events. The
-  `jumps` flow drains the _other_ node to force the trip home, so both clients visibly return.
+  dumb connection stays wherever it last moved. The smart pool rebalances on FAN _up_ events.
+  Draining the _other_ node forces the trip home, so both clients visibly return.
 - **Smart client falls back to AC-only if FAN is unreachable.** At startup `SmartWorkload` builds
   the pool with FCF enabled and fires a throwaway probe connection to force pool initialization. If
   FCF cannot be established, the probe throws, and the client logs

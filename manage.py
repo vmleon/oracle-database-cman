@@ -377,7 +377,8 @@ def info():
     console.print(f"ssh -i {key} opc@{ops_ip} 'sudo tail -n 80 /var/log/cman-bootstrap.log'")
     console.print("\n[bold]Resiliency demo (Java workload + Grafana)[/bold]")
     console.print("cd demo && podman compose up -d   # InfluxDB + Grafana at localhost:3000")
-    console.print("./demo/run-workload.sh            # dumb client -> CMAN-TDM, metrics -> InfluxDB")
+    console.print("./demo/run-dumb.sh                # dumb client  -> CMAN-TDM, metrics -> InfluxDB")
+    console.print("./demo/run-smart.sh               # smart client -> CMAN-TDM, metrics -> InfluxDB")
     console.print("python manage.py drain            # drain the serving node; watch Grafana")
     console.print("python manage.py restore          # bring the service back on all nodes")
 
@@ -528,31 +529,6 @@ def restore():
     cfg = load_config({})
     _do_restore(cfg)
     typer.echo("health restarted on all nodes.")
-
-
-@app.command()
-def jumps(node_a: str = "dbcman1", node_b: str = "dbcman2",
-          settle: int = 30, restore_wait: int = 20, timeout: int = 60):
-    """Choreograph a two-jump drain demo: A -> B -> back to A, annotated in Grafana.
-
-    Run both clients first (demo/run-workload.sh and demo/run-smart.sh), then watch the dashboard
-    while this runs. Uses explicit node names so the A->B->A shape holds regardless of where the
-    clients started.
-    """
-    import time
-    cfg = load_config({})
-    typer.echo(f"Two-jump flow: {node_a} -> {node_b} -> {node_a}\n")
-    typer.echo("Step 0: ensure both nodes are serving...")
-    _do_restore(cfg); time.sleep(settle)
-    typer.echo(f"Step 1: drain {node_a}  (jump to {node_b})...")
-    _do_drain(cfg, node_a, timeout); time.sleep(settle)
-    typer.echo(f"Step 2: restore {node_a}  (smart pool may rebalance back via FAN)...")
-    _do_restore(cfg); time.sleep(restore_wait)
-    typer.echo(f"Step 3: drain {node_b}  (jump back to {node_a})...")
-    _do_drain(cfg, node_b, timeout); time.sleep(settle)
-    typer.echo(f"Step 4: restore {node_b}  (both serving again).")
-    _do_restore(cfg)
-    typer.echo(f"\nDone. {node_a} -> {node_b} -> {node_a} complete.")
 
 
 GENERATED_DIR = TF_DIR / "generated"
