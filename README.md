@@ -59,6 +59,33 @@ returns a node name from inside the private subnet the laptop never addressed di
 node and a Grafana dashboard shows what CMAN-TDM does for a client that has no continuity logic of
 its own.
 
+## Observability
+
+Two Java clients drive the same steady workload through CMAN-TDM and ship metrics to InfluxDB; the
+**CMAN-TDM Resiliency** Grafana dashboard plots them side by side while nodes are drained. A **dumb
+client** (plain JDBC, one connection) isolates what the proxy tier alone contributes; a **smart
+client** (UCP pool + Application Continuity) adds in-flight replay.
+
+![CMAN-TDM Resiliency dashboard during a two-jump drain](images/dashboard.png)
+
+The capture above is a two-jump drain (`dbcman1` → `dbcman2` → `dbcman1`), with the red **Drain
+events** annotations marking each step. What each panel shows:
+
+- **SQL round-trip latency per client** — steady state sits in a tight ~100 ms band for both
+  clients (orange = dumb, purple = smart); a drain shows as a brief spike, and the single-threaded
+  dumb client also leaves a short gap while it blocks. No request fails — a drain is a latency
+  event, not an outage.
+- **Serving RAC node — dumb client** — the one plain connection lives on a single node and moves to
+  the survivor on a drain, then **stays there**: a live session never fails back when the node
+  returns.
+- **Smart pool spread across nodes** — the pooled connections serve from **both** nodes at once and
+  shift their share onto the survivor during a drain — the contrast to the dumb client's one-node-at-
+  a-time view.
+- **Total errors** — the headline: **zero** across both clients. Every drain was absorbed.
+
+The runbook for reproducing this — starting both clients and driving the `jumps` flow — is in
+[DEMO.md](DEMO.md).
+
 ## Substrate
 
 OCI Base Database Service, a VM DB system running 2-node RAC, Enterprise Edition – Extreme
