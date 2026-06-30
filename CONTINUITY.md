@@ -56,8 +56,9 @@ Reading the diagram:
   Infrastructure, one per node, listening on **port 6200**) emits a FAN message.
 - **CMAN receives FAN over ONS and acts on it in-band.** `oraaccess.xml` sets `<events>true</events>`,
   which makes CMAN a FAN consumer: it drains its own TDM gateway pool off the affected node _and_
-  forwards the event to continuity-aware clients over their existing connection. The DB→CMAN ONS link
-  needs port **6200** open.
+  forwards the event to continuity-aware clients over their existing connection. CMAN subscribes to
+  the DB's ONS over port **6200**, opened CMAN→DB by the `cman_eg_db_6200` / `db_in_cman_6200` NSG
+  rules.
 - **The smart client gets FAN in-band — no direct ONS subscription to the cluster.** Because the
   client reaches the database only through CMAN-TDM, FAN events ride back **in-band** on the same TNS
   connection the client already holds. The client never opens its own ONS socket to the RAC nodes.

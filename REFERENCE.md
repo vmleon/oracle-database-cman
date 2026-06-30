@@ -22,8 +22,10 @@ proxy user (`tdm`) whose credential CMAN holds in an auto-login wallet, and the 
 warmup while the pool establishes; steady-state queries do not.
 
 `max_connections`, `idle_timeout`, and `inbound_connect_timeout` in `cman.ora` bound the pool and
-the handshake. CMAN consumes FAN in-band when `oraaccess.xml` sets `<events>true</events>`; for the
-database to _publish_ FAN to CMAN over ONS, the DB→CMAN ONS port (6200) must also be open.
+the handshake. CMAN consumes FAN in-band when `oraaccess.xml` sets `<events>true</events>`. To
+receive those events CMAN subscribes to the database's Oracle Notification Service (ONS): the NSGs
+open CMAN→DB on port 6200 (`cman_eg_db_6200` / `db_in_cman_6200`), the continuity counterpart to the
+1521 service-registration path.
 
 ## What each client gets
 
@@ -72,6 +74,9 @@ must be listed or CMAN rejects the registration (TNS-01182).
   </default_parameters>
 </oraaccess>
 ```
+
+FAN reaches CMAN over ONS on port 6200, opened CMAN→DB by the `cman_eg_db_6200` / `db_in_cman_6200`
+NSG rules; without that path CMAN sees only `service_update` registration churn, not drain events.
 
 **`health` service (`srvctl`)** — Transparent Application Continuity attributes, preferred on both
 instances:
