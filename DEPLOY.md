@@ -98,9 +98,17 @@ primitives.
 
 ## Teardown
 
+Teardown has two independent parts: the local observability stack and the OCI infrastructure.
+
 ```bash
-python manage.py clean --destroy
+cd demo && podman compose down && cd ..   # stop the local InfluxDB + Grafana (add -v to drop the metrics volume)
 ```
 
-Destroys all OCI infrastructure (Terraform `destroy`). Run between sessions to avoid idle costs.
-`clean` without `--destroy` only clears local build artefacts under `infra/terraform/generated/`.
+```bash
+python manage.py clean --destroy          # destroy all OCI infrastructure (Terraform destroy)
+```
+
+`clean --destroy` only tears down what Terraform provisioned on OCI; the InfluxDB + Grafana
+containers run locally and are managed by podman, so stop them with `podman compose down` separately.
+`clean` without `--destroy` only clears local build artefacts under `infra/terraform/generated/`. Run
+the teardown between sessions to avoid idle costs.
