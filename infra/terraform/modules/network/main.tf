@@ -217,6 +217,23 @@ resource "oci_core_network_security_group_security_rule" "cman_eg_db_2484" {
   }
 }
 
+# CMAN -> DB :6200 (ONS: CMAN subscribes to the DB's Oracle Notification Service to receive FAN
+# drain/down/up events, so a planned drain reaches the in-flight session at a request boundary
+# instead of stalling on a dropped backend)
+resource "oci_core_network_security_group_security_rule" "cman_eg_db_6200" {
+  network_security_group_id = oci_core_network_security_group.cman.id
+  direction                 = "EGRESS"
+  protocol                  = "6"
+  destination               = oci_core_network_security_group.db.id
+  destination_type          = "NETWORK_SECURITY_GROUP"
+  tcp_options {
+    destination_port_range {
+      min = 6200
+      max = 6200
+    }
+  }
+}
+
 # CMAN -> internet :443 (download the staged client installer via PAR)
 resource "oci_core_network_security_group_security_rule" "cman_eg_https" {
   network_security_group_id = oci_core_network_security_group.cman.id
@@ -243,6 +260,21 @@ resource "oci_core_network_security_group_security_rule" "db_in_cman_1521" {
     destination_port_range {
       min = 1521
       max = 1521
+    }
+  }
+}
+
+# DB ingress 6200 from CMAN (ONS FAN subscription, the inbound half of cman_eg_db_6200)
+resource "oci_core_network_security_group_security_rule" "db_in_cman_6200" {
+  network_security_group_id = oci_core_network_security_group.db.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  source                    = oci_core_network_security_group.cman.id
+  source_type               = "NETWORK_SECURITY_GROUP"
+  tcp_options {
+    destination_port_range {
+      min = 6200
+      max = 6200
     }
   }
 }

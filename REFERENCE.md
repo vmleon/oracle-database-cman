@@ -2,7 +2,9 @@
 
 The deeper explanation behind the showcase: how CMAN-TDM works, what each kind of client gets from
 it, where the logs are, and the cmctl / SQLcl / `srvctl` commands worth knowing. The runbook is in
-[DEMO.md](DEMO.md); the value framing and the layer-ownership table are in [README.md](README.md).
+[DEMO.md](DEMO.md); the value framing and the layer-ownership table are in [README.md](README.md). The
+FAN / FCF / ONS continuity story — where each piece runs and how a drain reaches each client — is in
+[CONTINUITY.md](CONTINUITY.md).
 
 ## CMAN and Traffic Director Mode
 

@@ -109,8 +109,9 @@ from InfluxDB (override with `--instance dbcman2`, grace with `--timeout 90`).
   two-jump flow uses an explicit drain of the _other_ node to force the trip home, so both clients
   visibly return to the origin.
 
-The observability stack details (credentials, metric schema, teardown) are in
-[demo/README.md](demo/README.md).
+The continuity mechanics behind these charts — FAN / FCF / ONS, where each runs, and why dumb and
+smart diverge on the same drain — are in [CONTINUITY.md](CONTINUITY.md). The observability stack
+details (credentials, metric schema, teardown) are in [demo/README.md](demo/README.md).
 
 ## Drain and restore by hand
 
