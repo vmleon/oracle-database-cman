@@ -13,7 +13,13 @@
     AC="-failovertype AUTO -failover_restore AUTO -commit_outcome TRUE -notification TRUE -drain_timeout 120 -stopoption IMMEDIATE"
     CUR=$(srvctl config service -db "$DBUN" -service health 2>/dev/null || true)
     if [ -z "$CUR" ]; then
-      srvctl add service -db "$DBUN" -service health -pdb "$PDB" -preferred "$INSTS" $AC
+      # A freshly provisioned RAC can reject the add with PRCR-1001 until CRS finishes
+      # coming up, so retry the add itself (not only the start below) until it takes.
+      for _ in 1 2 3 4 5 6; do
+        srvctl config service -db "$DBUN" -service health >/dev/null 2>&1 && break
+        srvctl add service -db "$DBUN" -service health -pdb "$PDB" -preferred "$INSTS" $AC && break
+        sleep 10
+      done
       echo CHANGED
     elif ! echo "$CUR" | grep -qi 'Failover type: *AUTO'; then
       srvctl modify service -db "$DBUN" -service health $AC
