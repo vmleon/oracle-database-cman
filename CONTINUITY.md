@@ -142,7 +142,7 @@ sequenceDiagram
   Op->>DB: srvctl stop service health -instance dbcman1 -drain_timeout 60
   DB-->>ONS: FAN drain event (health down on dbcman1)
   ONS-->>S: FAN drain (in-band over TNS)
-  Note over S: FCF evicts dbcman1 conns;<br/>AC replays in-flight request on dbcman2
+  Note over S: FCF evicts dbcman1 conns,<br/>AC replays in-flight request on dbcman2
   S-->>S: small blip, no error, pool rebalances
   Note over D: no FAN consumer — nothing to receive
   ONS->>DB: in-flight read held, re-opened on dbcman2
