@@ -321,7 +321,7 @@
             "type": "influxdb",
             "uid": "influxdb"
           },
-          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"ok\" and r.client == \"smart\")\n  |> group(columns: [\"inst\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: count, createEmpty: true)\n  |> yield(name: \"count\")"
+          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"ok\" and r.client == \"smart\")\n  |> group(columns: [\"inst\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: count, createEmpty: false)\n  |> yield(name: \"count\")"
         }
       ]
     },

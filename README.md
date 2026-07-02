@@ -68,7 +68,7 @@ client** (UCP pool + Application Continuity) adds in-flight replay.
 
 ![CMAN-TDM Resiliency dashboard during a two-jump drain](images/dashboard.png)
 
-The capture above is a drain sequence (`dbcman1` → `dbcman2` → `dbcman1`), with the red **Drain
+The capture above is a drain sequence (`dbcman2` → `dbcman1` → `dbcman2`), with the red **Drain
 events** annotations marking each step. What each panel shows:
 
 - **SQL round-trip latency per client** — steady state sits in a tight ~100 ms band for both
@@ -81,7 +81,10 @@ events** annotations marking each step. What each panel shows:
 - **Smart pool spread across nodes** — the pooled connections serve from **both** nodes at once and
   shift their share onto the survivor during a drain — the contrast to the dumb client's one-node-at-
   a-time view.
-- **Total errors** — the headline: **zero** across both clients. Every drain was absorbed.
+- **Errors per window — by client**, with **Dumb Client Errors** and **Smart Client Errors** tiles
+  beside it — errors broken out per client so a nonzero count names the culprit. The headline is
+  **zero** on both: CMAN-TDM holds and replays the read for the dumb client, Application Continuity
+  replays for the smart pool. Every drain was absorbed.
 
 The runbook for reproducing this — starting both clients and driving the drain/restore steps by
 hand — is in [DEMO.md](DEMO.md).

@@ -130,7 +130,7 @@ nodes populated before draining the other one.**
 | CMAN status / registrations | live, in-process                                                          | `cmctl show status -c cman_proxy`, `cmctl show services -c cman_proxy`                                                |
 | CMAN alert + trace          | ADR diag tree under the client `ORACLE_BASE`                              | `cmctl show parameter log_directory` / `trace_directory` to find the exact path, then read `cman_proxy/{alert,trace}` |
 | Database alert log          | `$ORACLE_BASE/diag/rdbms/<db>/<sid>/trace/alert_<sid>.log` on the DB node | `tail -f` as `oracle`                                                                                                 |
-| Service config / status     | live                                                                      | `srvctl config service -db "$D" -service myapp`, `srvctl status service ...`                                         |
+| Service config / status     | live                                                                      | `srvctl config service -db "$D" -service myapp`, `srvctl status service ...`                                          |
 | Ops bootstrap               | `/var/log/cman-bootstrap.log` on the ops host                             | `python manage.py info` prints the tail command; complete when `/var/lib/cman-bootstrap.ok` exists                    |
 | Workload metrics            | InfluxDB `workload` bucket                                                | the Grafana **CMAN-TDM Resiliency** dashboard, or the InfluxDB UI at `:8086`                                          |
 
@@ -180,8 +180,8 @@ that instance as a privileged user instead of waiting out the registration inter
 
 ## Oracle documentation
 
-- Oracle Net Services Administrator's Guide — _Configuring Oracle Connection Manager_ and _Traffic
-  Director Mode_.
+- Oracle Net Services Administrator's Guide — [_Configuring and Administering Oracle Connection Manager_](https://docs.oracle.com/en/database/oracle/oracle-database/26/netag/configuring-oracle-connection-manager.html)
+  (the primary reference: Traffic Director Mode, `rule_list`, proxy authentication, PRCP).
 - Oracle Net Services Reference — _Oracle Connection Manager Parameters_ (`tdm`, `rule_list`,
   `max_connections`, `registration_invited_nodes`, PRCP tuning).
 - CMAN-TDM whitepaper — _Oracle Database Connection Proxy for Scalable Applications_.
