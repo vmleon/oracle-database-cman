@@ -95,6 +95,30 @@ that starts when the drain notification is sent. `rlbgoal SERVICE_TIME` makes th
 runtime load advisories over FAN so a continuity-aware pool rebalances back onto a restored node
 instead of staying pinned to the survivor; `clbgoal SHORT` spreads new connections by session count.
 
+## Inspect CMAN on the host
+
+CMAN's own view of registrations and gateways, and its on-disk configuration, are the other half of
+the proof. SSH into the CMAN host and ask cmctl as `oracle`:
+
+```bash
+CH=/opt/oracle/product/19c/client_1
+ssh -i <key> opc@<cman_ip> "sudo su - oracle -c 'export ORACLE_HOME=$CH; $CH/bin/cmctl show services -c cman_proxy'"
+```
+
+`show services` lists each registered service and its gateway handlers; `show status` reports the
+TDM mode and connection counts. `python manage.py info` prints these commands with the live host
+filled in; the full cmctl set is in [Command reference](#command-reference) below.
+
+The configuration files live under `$ORACLE_HOME/network/admin` on the CMAN host — read them to see
+what CMAN is actually running:
+
+| File            | What to look for                                                                                                |
+| --------------- | --------------------------------------------------------------------------------------------------------------- |
+| `cman.ora`      | the `cman_proxy` configuration — `tdm = true`, `max_connections`, the `rule_list`, `registration_invited_nodes` |
+| `oraaccess.xml` | `<events>true</events>`, which lets CMAN consume FAN in-band                                                    |
+
+Their contents and meaning are in [Configuration primitives](#configuration-primitives) above.
+
 ## Tuning: drains, timeouts, rebalance, TTL
 
 Two families of knobs decide how a drain behaves: **server-side service attributes** (what the
@@ -177,6 +201,41 @@ lsnrctl status                                         # local listener + regist
 
 To force a DB instance to re-register with CMAN after a reload, run `alter system register;` on
 that instance as a privileged user instead of waiting out the registration interval.
+
+## Drain and restore by hand
+
+`manage.py drain` / `restore` wrap `srvctl` on the RAC node. Run the same operations directly to
+drive the drain without `manage.py`.
+
+**Over SSH (`srvctl`, server-side draining).** Hop through the ops host to a DB node as `oracle`:
+
+```bash
+ssh -i <key> opc@<ops_ip>
+DB=$(awk -F= '/dbnode/{print $NF}' ~/hosts.ini)
+ssh -i ~/private.key opc@"$DB"
+sudo su - oracle
+export ORACLE_HOME=$(ls -d /u01/app/oracle/product/*/dbhome_* | head -1)
+export PATH=$ORACLE_HOME/bin:$PATH
+D=$(srvctl config database | head -1)
+
+srvctl status service -db "$D" -service myapp
+# drain off one instance (planned maintenance), leaving the survivor serving:
+srvctl stop service  -db "$D" -service myapp -instance dbcman1 -drain_timeout 60 -stopoption immediate -force
+# restore on all nodes:
+srvctl start service -db "$D" -service myapp
+```
+
+**From SQLcl (`DBMS_SERVICE`).** Connected to the _instance you want to drain_ as a privileged user
+(e.g. `system`), the same drain is a PL/SQL call — `DBMS_SERVICE` acts on the local instance only:
+
+```sql
+exec dbms_service.stop_service('myapp', drain_timeout => 60, stop_option => dbms_service.post_transaction);
+-- restore:
+exec dbms_service.start_service('myapp');
+```
+
+`srvctl` is the path `manage.py drain` uses because it can target a named instance from anywhere on
+the cluster; the `DBMS_SERVICE` form is handy when you already have a SQLcl session on the node.
 
 ## Oracle documentation
 

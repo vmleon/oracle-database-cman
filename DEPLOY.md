@@ -77,9 +77,27 @@ python manage.py sql     # one-time: save the 'cman' SQLcl named connection loca
 python manage.py health  # run a query through the CMAN endpoint
 ```
 
-`health` runs `select instance_name from v$instance` through CMAN and prints the RAC instance name
-that served it — proof the laptop reached a node inside the private subnet without addressing it
-directly. The full runbook is in [DEMO.md](DEMO.md).
+`health` connects to the saved `cman` named connection, runs `select instance_name from v$instance`
+through CMAN, and prints the RAC instance name that served it — for example `dbcman1` or `dbcman2`.
+That name comes from inside the private subnet, yet the only address the laptop used is the CMAN
+endpoint: proof the end-to-end path works and the laptop reaches a node without addressing it
+directly. To run the query by hand:
+
+```bash
+TERM=dumb sql -name cman
+```
+
+```sql
+select instance_name from v$instance;
+```
+
+When SQLcl connects you see `connected via Oracle Connection Manager in Traffic Director mode` — the
+unambiguous sign the session goes through CMAN-TDM, not a direct hop. CMAN parsed the Oracle Net
+handshake, applied the `RULE_LIST`, followed the SCAN redirect to a node VIP itself, and forwarded
+the session.
+
+With connectivity verified, the resiliency runbook — drain nodes under load and watch the clients
+ride it out in Grafana — is in [DEMO.md](DEMO.md).
 
 ## What gets deployed
 
@@ -87,7 +105,7 @@ directly. The full runbook is in [DEMO.md](DEMO.md).
 | ---------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------- |
 | CMAN proxy VM                | Public subnet  | The only address the client knows. Runs CMAN-TDM on :1521. NSG allows ingress from the client CIDR on :1521 and :22. |
 | Ops / bastion VM             | Public subnet  | Self-provisions via cloud-init, runs the Ansible `cman` and `db` roles, and is the SSH hop to the private DB nodes.  |
-| 2-node RAC DB system         | Private subnet | Extreme Performance, SCAN + node VIPs on :1521, the `myapp` service. Unreachable from the client network.           |
+| 2-node RAC DB system         | Private subnet | Extreme Performance, SCAN + node VIPs on :1521, the `myapp` service. Unreachable from the client network.            |
 | Object Storage bucket + PARs | Regional       | Carries the client zip and Ansible roles to the ops host bootstrap.                                                  |
 
 The client authenticates through CMAN-TDM with proxy authentication: the `db` role creates an
