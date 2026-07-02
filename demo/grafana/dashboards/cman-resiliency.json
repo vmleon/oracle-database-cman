@@ -79,6 +79,18 @@
           {
             "matcher": {
               "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "${__field.labels.client}"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
               "options": "B"
             },
             "properties": [
@@ -93,6 +105,10 @@
               {
                 "id": "custom.lineWidth",
                 "value": 0
+              },
+              {
+                "id": "displayName",
+                "value": "${__field.labels.client} peak"
               }
             ]
           },
@@ -145,7 +161,7 @@
             "type": "influxdb",
             "uid": "influxdb"
           },
-          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"ok\")\n  |> group(columns: [\"client\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> set(key: \"_field\", value: \"mean\")\n  |> yield(name: \"mean\")"
+          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"ok\")\n  |> group(columns: [\"client\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> drop(columns: [\"_start\", \"_stop\"])\n  |> set(key: \"_field\", value: \"mean\")\n  |> yield(name: \"mean\")"
         },
         {
           "refId": "B",
@@ -153,7 +169,7 @@
             "type": "influxdb",
             "uid": "influxdb"
           },
-          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"ok\")\n  |> group(columns: [\"client\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: true)\n  |> set(key: \"_field\", value: \"max\")\n  |> yield(name: \"max\")"
+          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"ok\")\n  |> group(columns: [\"client\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: true)\n  |> drop(columns: [\"_start\", \"_stop\"])\n  |> set(key: \"_field\", value: \"max\")\n  |> yield(name: \"max\")"
         }
       ]
     },
@@ -311,8 +327,8 @@
     },
     {
       "id": 3,
-      "title": "Errors per window",
-      "description": "When (if ever) a client got an actual SQL error rather than an absorbed latency event. Expected empty: CMAN-TDM holds and replays the read, so a planned drain produces no error.",
+      "title": "Errors per window — by client",
+      "description": "When (if ever) a client got an actual SQL error rather than an absorbed latency event, split by client (orange = dumb, purple = smart). Expected empty: CMAN-TDM holds and replays the read, so a planned drain produces no error.",
       "type": "timeseries",
       "datasource": {
         "type": "influxdb",
@@ -330,8 +346,7 @@
           "decimals": 0,
           "min": 0,
           "color": {
-            "mode": "fixed",
-            "fixedColor": "red"
+            "mode": "fixed"
           },
           "custom": {
             "drawStyle": "bars",
@@ -339,7 +354,46 @@
             "fillOpacity": 70
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*dumb.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF9830"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Dumb"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*smart.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#A352CC"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Smart"
+              }
+            ]
+          }
+        ]
       },
       "targets": [
         {
@@ -348,14 +402,14 @@
             "type": "influxdb",
             "uid": "influxdb"
           },
-          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"error\")\n  |> aggregateWindow(every: v.windowPeriod, fn: count, createEmpty: false)\n  |> set(key: \"_field\", value: \"errors\")\n  |> yield(name: \"errors\")"
+          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"error\")\n  |> group(columns: [\"client\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: count, createEmpty: false)\n  |> drop(columns: [\"_start\", \"_stop\"])\n  |> yield(name: \"errors\")"
         }
       ]
     },
     {
       "id": 4,
-      "title": "Total errors",
-      "description": "Total SQL errors across both clients in the window. The headline resilience number — zero means every drain was absorbed.",
+      "title": "Dumb Client Errors",
+      "description": "SQL errors from the dumb (plain JDBC) client in the window. Zero means every drain was absorbed by CMAN-TDM.",
       "type": "stat",
       "datasource": {
         "type": "influxdb",
@@ -363,7 +417,7 @@
       },
       "gridPos": {
         "h": 6,
-        "w": 6,
+        "w": 3,
         "x": 18,
         "y": 15
       },
@@ -406,7 +460,65 @@
             "type": "influxdb",
             "uid": "influxdb"
           },
-          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"error\")\n  |> count()\n  |> set(key: \"_field\", value: \"errors\")\n  |> yield(name: \"errors\")"
+          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"error\" and r.client == \"dumb\")\n  |> count()\n  |> set(key: \"_field\", value: \"errors\")\n  |> yield(name: \"errors\")"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Smart Client Errors",
+      "description": "SQL errors from the smart (UCP + Application Continuity) client in the window. Zero means AC replayed every drained session on the survivor.",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 3,
+        "x": 21,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"error\" and r.client == \"smart\")\n  |> count()\n  |> set(key: \"_field\", value: \"errors\")\n  |> yield(name: \"errors\")"
         }
       ]
     }

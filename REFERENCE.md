@@ -86,11 +86,42 @@ srvctl add service -db "$D" -service health \
   -preferred dbcman1,dbcman2 \
   -failovertype AUTO -failover_restore AUTO \
   -commit_outcome TRUE -notification TRUE \
-  -drain_timeout 120 -stopoption IMMEDIATE
+  -drain_timeout 120 -stopoption IMMEDIATE \
+  -rlbgoal SERVICE_TIME -clbgoal SHORT
 ```
 
 `FAILOVER_TYPE=AUTO` enables TAC (it is not on by default); `drain_timeout` bounds the grace period
-that starts when the drain notification is sent.
+that starts when the drain notification is sent. `rlbgoal SERVICE_TIME` makes the service publish
+runtime load advisories over FAN so a continuity-aware pool rebalances back onto a restored node
+instead of staying pinned to the survivor; `clbgoal SHORT` spreads new connections by session count.
+
+## Tuning: drains, timeouts, rebalance, TTL
+
+Two families of knobs decide how a drain behaves: **server-side service attributes** (what the
+database does during planned maintenance) and **client-side pool settings** (how fast the pool
+reacts and re-spreads afterwards). Values below are what this showcase ships; change them with the
+"tweak" column.
+
+| Knob                                       | Layer                                  | Now                            | What it does / what the wait is for                                                                                                                                                             | Tweak                                                                                                         |
+| ------------------------------------------ | -------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `drain_timeout`                            | service (`srvctl`) + `manage.py drain` | 120 s service / 60 s per drain | Grace period after the drain notification during which sessions relocate **at a request boundary** before `stopoption` ends the rest. The wait is for in-flight work to reach a safe point.     | Raise for long-running transactions; sub-second queries never need it.                                        |
+| `stopoption`                               | service                                | `IMMEDIATE`                    | How leftover sessions end when `drain_timeout` expires: `IMMEDIATE` cuts them, `TRANSACTIONAL`/`POST_TRANSACTION` waits for the transaction.                                                    | Leave `IMMEDIATE` for a planned demo; use transactional stops for OLTP that must not be cut.                  |
+| `replay_init_time`                         | service                                | 300 s (default)                | How long AC keeps trying to **initiate** replay after a recoverable error before giving up with `ORA-25415`. Not the bottleneck here — errors fired ~9 s in, far under 300 s.                   | Raise only if replay legitimately needs minutes to land on the survivor.                                      |
+| `rlbgoal SERVICE_TIME`                     | service                                | on                             | Publishes runtime load advisories over FAN. Removes the wait where the pool has nothing telling it a restored node is idle, so it re-spreads lazily. `SERVICE_TIME` routes to the fastest node. | `THROUGHPUT` to balance by work done instead of response time; `NONE` disables (what caused the pinned pool). |
+| `clbgoal SHORT`                            | service                                | on                             | Connection-time balancing for **new** connections. `SHORT` spreads by session count (right for pools).                                                                                          | `LONG` for long-lived, non-pooled connections.                                                                |
+| `maxConnectionReuseTime`                   | UCP client (`SmartWorkload.java`)      | 180 s                          | Retires an aged pooled connection so its replacement re-spreads onto a restored node. Bounds how long a connection can stay pinned when FAN _up_ events rebalance only lazily.                  | 30–60 s for aggressive re-spread (more reconnects); `0` disables.                                             |
+| `oracle.net.CONNECT_TIMEOUT`               | both clients                           | 20 s smart / 20 s dumb         | Bounds the TCP + logon to a backend. Too low aborts the slow first TDM logon and breaks reconnects.                                                                                             | Keep ≥ the observed cold-gateway logon (~10–20 s).                                                            |
+| statement query timeout                    | both clients                           | 30 s smart / 15 s dumb         | How fast a dead session is detected. Must sit **above** the first-query/TDM warmup (~10–20 s) or healthy slow queries get killed as false errors.                                               | Lower to detect failures faster once you know your warmup cost.                                               |
+| `idle_timeout` / `inbound_connect_timeout` | `cman.ora`                             | 0 / 60 s                       | CMAN idle-connection close (0 = never) and how long CMAN waits for a client connect handshake.                                                                                                  | Set `idle_timeout` > 0 to reap abandoned clients.                                                             |
+| `tdm_threading_mode` (PRCP)                | `cman.ora`                             | `dedicated`                    | Dedicated mode does **not** keep warm backend connections. CMAN cannot pre-warm a restored node, so re-spread is entirely the client pool's job (the two rows above).                           | Enabling PRCP pooling adds proxy-resident warm backends, at added CMAN config complexity.                     |
+
+**Draining both nodes in sequence.** A single drain is absorbed with zero errors. Draining one
+node pushes the whole smart pool onto the survivor; `restore` brings the service back but the pool
+re-spreads only gradually. Draining the _second_ node before the pool has spread back means a
+near-total failover onto a node that was just restored and is still cold — which is what produces
+the handful of `ORA-25415`/`ORA-3114` on the smart client. `rlbgoal` + `maxConnectionReuseTime`
+shorten that re-spread window; operationally, **wait until the "Smart pool spread" panel shows both
+nodes populated before draining the other one.**
 
 ## Where the logs are
 

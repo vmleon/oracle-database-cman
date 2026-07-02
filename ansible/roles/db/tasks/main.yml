@@ -2,6 +2,8 @@
 # Transparent Application Continuity service on both RAC nodes: -failovertype AUTO enables
 # TAC, -notification TRUE publishes FAN, -drain_timeout bounds the planned-maintenance grace
 # period. Preferred on all instances so CMAN can drain work off one node onto the other.
+# -rlbgoal SERVICE_TIME publishes runtime load advisories over FAN so a continuity-aware pool
+# rebalances back onto a restored node; -clbgoal SHORT spreads new connections by session count.
 - name: Create or update the health service with Application Continuity attributes
   ansible.builtin.shell: |
     set -e
@@ -10,21 +12,23 @@
     DBUN=$(srvctl config database | head -1)
     PDB=$(srvctl config service -db "$DBUN" | awk -F': ' '/Pluggable database name/{print $2; exit}')
     INSTS=$(srvctl status database -db "$DBUN" | awk '/^Instance/{print $2}' | paste -sd,)
-    AC="-failovertype AUTO -failover_restore AUTO -commit_outcome TRUE -notification TRUE -drain_timeout 120 -stopoption IMMEDIATE"
-    CUR=$(srvctl config service -db "$DBUN" -service health 2>/dev/null || true)
-    if [ -z "$CUR" ]; then
+    AC="-failovertype AUTO -failover_restore AUTO -commit_outcome TRUE -notification TRUE -drain_timeout 120 -stopoption IMMEDIATE -rlbgoal SERVICE_TIME -clbgoal SHORT"
+    # Probe existence by return code: srvctl prints PRCR-1001 for a missing service to
+    # stdout, so testing its captured output would wrongly read as "exists".
+    if srvctl config service -db "$DBUN" -service health >/dev/null 2>&1; then
+      if ! srvctl config service -db "$DBUN" -service health | grep -qi 'Failover type: *AUTO'; then
+        srvctl modify service -db "$DBUN" -service health $AC
+        srvctl modify service -db "$DBUN" -service health -modifyconfig -preferred "$INSTS" || true
+        srvctl stop service -db "$DBUN" -service health || true
+        echo CHANGED
+      fi
+    else
       # A freshly provisioned RAC can reject the add with PRCR-1001 until CRS finishes
       # coming up, so retry the add itself (not only the start below) until it takes.
       for _ in 1 2 3 4 5 6; do
-        srvctl config service -db "$DBUN" -service health >/dev/null 2>&1 && break
         srvctl add service -db "$DBUN" -service health -pdb "$PDB" -preferred "$INSTS" $AC && break
         sleep 10
       done
-      echo CHANGED
-    elif ! echo "$CUR" | grep -qi 'Failover type: *AUTO'; then
-      srvctl modify service -db "$DBUN" -service health $AC
-      srvctl modify service -db "$DBUN" -service health -modifyconfig -preferred "$INSTS" || true
-      srvctl stop service -db "$DBUN" -service health || true
       echo CHANGED
     fi
     # Ensure the service is running. A freshly added service can briefly report

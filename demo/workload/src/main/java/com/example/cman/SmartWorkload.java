@@ -27,6 +27,12 @@ public final class SmartWorkload {
 
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
 
+    // Retire a pooled connection once it has lived this long, so the pool re-spreads onto a
+    // restored node: UCP only rebalances lazily on FAN up events, so without a ceiling the whole
+    // pool can stay pinned to one node after a drain+restore. Gentle default; lower it (30-60s)
+    // for faster re-spread at the cost of more reconnects. 0 disables. See REFERENCE.md "Tuning".
+    private static final long MAX_CONN_REUSE_SECONDS = 180;
+
     public static void main(String[] args) throws Exception {
         var host = require("CMAN_HOST");
         var port = env("CMAN_PORT", "1521");
@@ -71,6 +77,9 @@ public final class SmartWorkload {
             pds.setConnectionProperty("oracle.net.CONNECT_TIMEOUT", "20000");
             // FAN/Fast Connection Failover: react to drain/up events (in-band via CMAN-TDM).
             pds.setFastConnectionFailoverEnabled(fcf);
+            // Retire aged connections so the pool re-spreads onto a restored node (paired with the
+            // service's RLB goal, which tells the pool where the load is).
+            pds.setMaxConnectionReuseTime(MAX_CONN_REUSE_SECONDS);
             return pds;
         } catch (SQLException e) {
             throw new IllegalStateException("failed to build UCP pool", e);
