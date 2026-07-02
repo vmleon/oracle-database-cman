@@ -11,8 +11,8 @@ SQLcl / `srvctl` reference, and the configuration primitives — see [REFERENCE.
 | `python manage.py info`                             | Print endpoints and ready-to-paste connect / SSH / cmctl / demo commands. |
 | `python manage.py sql`                              | Save the `cman` SQLcl named connection on this laptop (one-time).         |
 | `python manage.py health`                           | Run `select instance_name from v$instance` through the CMAN endpoint.     |
-| `python manage.py drain [--instance N --timeout S]` | Drain the `health` service off a RAC node; mark it in Grafana.            |
-| `python manage.py restore`                          | Restart `health` on all RAC nodes after a drain.                          |
+| `python manage.py drain [--instance N --timeout S]` | Drain the `myapp` service off a RAC node; mark it in Grafana.            |
+| `python manage.py restore`                          | Restart `myapp` on all RAC nodes after a drain.                          |
 
 Run `python manage.py info` first — it prints the live endpoints and the exact SSH, cmctl, and
 demo commands for the current deployment, so you can copy-paste rather than transcribe.
@@ -84,9 +84,9 @@ python manage.py drain --instance dbcman2   # drain B: clients move to dbcman1
 python manage.py restore                     # restore B: both nodes serving again
 ```
 
-Each `drain` writes a `cman_event` annotation (red line on every time panel) and stops `health` on
+Each `drain` writes a `cman_event` annotation (red line on every time panel) and stops `myapp` on
 that instance with a grace period (`--timeout`, default 60 s), leaving the survivor serving. `restore`
-restarts `health` on **all** nodes, so the same command brings each node back. Omit `--instance` to
+restarts `myapp` on **all** nodes, so the same command brings each node back. Omit `--instance` to
 drain whichever node currently serves the dumb client (read from InfluxDB).
 
 ### What the charts teach
@@ -129,20 +129,20 @@ export ORACLE_HOME=$(ls -d /u01/app/oracle/product/*/dbhome_* | head -1)
 export PATH=$ORACLE_HOME/bin:$PATH
 D=$(srvctl config database | head -1)
 
-srvctl status service -db "$D" -service health
+srvctl status service -db "$D" -service myapp
 # drain off one instance (planned maintenance), leaving the survivor serving:
-srvctl stop service  -db "$D" -service health -instance dbcman1 -drain_timeout 60 -stopoption immediate -force
+srvctl stop service  -db "$D" -service myapp -instance dbcman1 -drain_timeout 60 -stopoption immediate -force
 # restore on all nodes:
-srvctl start service -db "$D" -service health
+srvctl start service -db "$D" -service myapp
 ```
 
 **From SQLcl (`DBMS_SERVICE`).** Connected to the _instance you want to drain_ as a privileged user
 (e.g. `system`), the same drain is a PL/SQL call — `DBMS_SERVICE` acts on the local instance only:
 
 ```sql
-exec dbms_service.stop_service('health', drain_timeout => 60, stop_option => dbms_service.post_transaction);
+exec dbms_service.stop_service('myapp', drain_timeout => 60, stop_option => dbms_service.post_transaction);
 -- restore:
-exec dbms_service.start_service('health');
+exec dbms_service.start_service('myapp');
 ```
 
 `srvctl` is the path `manage.py drain` uses because it can target a named instance from anywhere on

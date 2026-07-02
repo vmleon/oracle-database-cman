@@ -78,11 +78,11 @@ must be listed or CMAN rejects the registration (TNS-01182).
 FAN reaches CMAN over ONS on port 6200, opened CMAN→DB by the `cman_eg_db_6200` / `db_in_cman_6200`
 NSG rules; without that path CMAN sees only `service_update` registration churn, not drain events.
 
-**`health` service (`srvctl`)** — Transparent Application Continuity attributes, preferred on both
+**`myapp` service (`srvctl`)** — Transparent Application Continuity attributes, preferred on both
 instances:
 
 ```bash
-srvctl add service -db "$D" -service health \
+srvctl add service -db "$D" -service myapp \
   -preferred dbcman1,dbcman2 \
   -failovertype AUTO -failover_restore AUTO \
   -commit_outcome TRUE -notification TRUE \
@@ -130,7 +130,7 @@ nodes populated before draining the other one.**
 | CMAN status / registrations | live, in-process                                                          | `cmctl show status -c cman_proxy`, `cmctl show services -c cman_proxy`                                                |
 | CMAN alert + trace          | ADR diag tree under the client `ORACLE_BASE`                              | `cmctl show parameter log_directory` / `trace_directory` to find the exact path, then read `cman_proxy/{alert,trace}` |
 | Database alert log          | `$ORACLE_BASE/diag/rdbms/<db>/<sid>/trace/alert_<sid>.log` on the DB node | `tail -f` as `oracle`                                                                                                 |
-| Service config / status     | live                                                                      | `srvctl config service -db "$D" -service health`, `srvctl status service ...`                                         |
+| Service config / status     | live                                                                      | `srvctl config service -db "$D" -service myapp`, `srvctl status service ...`                                         |
 | Ops bootstrap               | `/var/log/cman-bootstrap.log` on the ops host                             | `python manage.py info` prints the tail command; complete when `/var/lib/cman-bootstrap.ok` exists                    |
 | Workload metrics            | InfluxDB `workload` bucket                                                | the Grafana **CMAN-TDM Resiliency** dashboard, or the InfluxDB UI at `:8086`                                          |
 
@@ -170,8 +170,8 @@ export ORACLE_HOME=$(ls -d /u01/app/oracle/product/*/dbhome_* | head -1)
 export PATH=$ORACLE_HOME/bin:$PATH
 D=$(srvctl config database | head -1)
 srvctl status database -db "$D"                       # instances up/down
-srvctl config service  -db "$D" -service health       # AC/drain attributes
-srvctl status service  -db "$D" -service health        # which instances serve health
+srvctl config service  -db "$D" -service myapp       # AC/drain attributes
+srvctl status service  -db "$D" -service myapp        # which instances serve myapp
 lsnrctl status                                         # local listener + registered services
 ```
 

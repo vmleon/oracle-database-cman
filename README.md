@@ -45,7 +45,7 @@ flowchart TB
             OPS["Ops / bastion VM<br/>cloud-init self-provision<br/>runs Ansible cman + db roles"]
         end
         subgraph PRIV["Private subnet — no client reachability"]
-            RAC["2-node RAC DB system (Extreme Performance)<br/>SCAN + node VIPs :1521<br/>health service"]
+            RAC["2-node RAC DB system (Extreme Performance)<br/>SCAN + node VIPs :1521<br/>myapp service"]
         end
     end
     Laptop ==>|"Oracle Net to one stable endpoint"| CMAN

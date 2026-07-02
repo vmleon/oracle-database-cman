@@ -1,4 +1,4 @@
-# FAN, FCF, ONS, and the `health` service
+# FAN, FCF, ONS, and the `myapp` service
 
 The continuity story behind the showcase: what each acronym means, **where every piece runs in this
 CMAN-TDM + RAC topology**, how a FAN event travels from a draining RAC node to each client, and why
@@ -33,8 +33,8 @@ flowchart LR
 
   subgraph cluster["RAC cluster (private subnet)"]
     scan["SCAN / node VIP listeners"]
-    n1["<b>dbcman1</b><br/>health (preferred)"]
-    n2["<b>dbcman2</b><br/>health (preferred)"]
+    n1["<b>dbcman1</b><br/>myapp (preferred)"]
+    n2["<b>dbcman2</b><br/>myapp (preferred)"]
     ons["ONS daemons<br/>one per RAC node · port 6200"]
   end
 
@@ -51,7 +51,7 @@ flowchart LR
 
 Reading the diagram:
 
-- **The RAC nodes publish FAN.** The `health` service carries `-notification TRUE`, so when an
+- **The RAC nodes publish FAN.** The `myapp` service carries `-notification TRUE`, so when an
   instance stops, drains, or starts the service, the local **ONS daemon** (part of Grid
   Infrastructure, one per node, listening on **port 6200**) emits a FAN message.
 - **CMAN receives FAN over ONS and acts on it in-band.** `oraaccess.xml` sets `<events>true</events>`,
@@ -87,15 +87,15 @@ The practical consequence: the client only needs the one CMAN endpoint and the F
 does not need network reachability to the RAC ONS ports, and it does not need a client-side `ons.config`
 listing cluster nodes. CMAN is the single funnel for both data and events.
 
-## The `health` service — what it is and where it lives
+## The `myapp` service — what it is and where it lives
 
-`health` is a **RAC database service**, not a separate process or host. A service is clusterware
+`myapp` is a **RAC database service**, not a separate process or host. A service is clusterware
 metadata that says "this named workload runs on these instances with these continuity attributes."
 It lives in the cluster registry, runs **inside the PDB** on its **preferred** instances (both
 `dbcman1` and `dbcman2`), and is created with Application Continuity attributes:
 
 ```bash
-srvctl add service -db "$DBUN" -service health -pdb "$PDB" -preferred dbcman1,dbcman2 \
+srvctl add service -db "$DBUN" -service myapp -pdb "$PDB" -preferred dbcman1,dbcman2 \
   -failovertype AUTO -failover_restore AUTO -commit_outcome TRUE \
   -notification TRUE -drain_timeout 120 -stopoption IMMEDIATE
 ```
@@ -112,8 +112,8 @@ What each attribute buys, in this demo:
 - `-preferred dbcman1,dbcman2` — the service runs on **both** nodes, so a drain off one leaves the
   survivor already serving — no cold start.
 
-A drain is just `srvctl stop service -service health -instance dbcman1 -drain_timeout ...`; restore is
-`srvctl start service -service health`. The cluster keeps `health` running on the other node
+A drain is just `srvctl stop service -service myapp -instance dbcman1 -drain_timeout ...`; restore is
+`srvctl start service -service myapp`. The cluster keeps `myapp` running on the other node
 throughout. `manage.py drain` / `restore` wrap exactly these calls.
 
 ## Dumb vs. smart on the same drain
@@ -134,13 +134,13 @@ in what the _client_ brings.
 ```mermaid
 sequenceDiagram
   participant Op as manage.py drain
-  participant DB as dbcman1 (health)
+  participant DB as dbcman1 (myapp)
   participant ONS as ONS / CMAN
   participant D as Dumb client
   participant S as Smart client
 
-  Op->>DB: srvctl stop service health -instance dbcman1 -drain_timeout 60
-  DB-->>ONS: FAN drain event (health down on dbcman1)
+  Op->>DB: srvctl stop service myapp -instance dbcman1 -drain_timeout 60
+  DB-->>ONS: FAN drain event (myapp down on dbcman1)
   ONS-->>S: FAN drain (in-band over TNS)
   Note over S: FCF evicts dbcman1 conns,<br/>AC replays in-flight request on dbcman2
   S-->>S: small blip, no error, pool rebalances
@@ -185,8 +185,8 @@ continuity with proactive pool rebalancing needs a continuity-aware driver consu
 
 ```bash
 # Is the service publishing FAN, and on which instances?
-srvctl config service -db "$D" -service health        # look for Notification: true, Failover type: AUTO
-srvctl status service -db "$D" -service health          # which instances serve health right now
+srvctl config service -db "$D" -service myapp        # look for Notification: true, Failover type: AUTO
+srvctl status service -db "$D" -service myapp          # which instances serve myapp right now
 
 # Does CMAN see the registration / gateways?
 cmctl show services -c cman_proxy

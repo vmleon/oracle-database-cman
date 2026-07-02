@@ -60,7 +60,7 @@ Stands up the Virtual Cloud Network (VCN), subnets, Network Security Groups (NSG
 the ops/bastion VM, and the 2-node RAC DB system. Uploads the client zip and the Ansible roles to
 the `cman-poc-artifacts` Object Storage bucket and creates the pre-authenticated requests the ops
 host bootstrap reads. The ops host then **self-provisions via cloud-init**: it installs Ansible,
-pulls the roles, configures CMAN-TDM on the CMAN host, and creates the `health` service on the
+pulls the roles, configures CMAN-TDM on the CMAN host, and creates the `myapp` service on the
 database over SSH — no SSH push from the operator.
 
 Bootstrap is complete when the sentinel file `/var/lib/cman-bootstrap.ok` exists on the ops host.
@@ -87,7 +87,7 @@ directly. The full runbook is in [DEMO.md](DEMO.md).
 | ---------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------- |
 | CMAN proxy VM                | Public subnet  | The only address the client knows. Runs CMAN-TDM on :1521. NSG allows ingress from the client CIDR on :1521 and :22. |
 | Ops / bastion VM             | Public subnet  | Self-provisions via cloud-init, runs the Ansible `cman` and `db` roles, and is the SSH hop to the private DB nodes.  |
-| 2-node RAC DB system         | Private subnet | Extreme Performance, SCAN + node VIPs on :1521, the `health` service. Unreachable from the client network.           |
+| 2-node RAC DB system         | Private subnet | Extreme Performance, SCAN + node VIPs on :1521, the `myapp` service. Unreachable from the client network.           |
 | Object Storage bucket + PARs | Regional       | Carries the client zip and Ansible roles to the ops host bootstrap.                                                  |
 
 The client authenticates through CMAN-TDM with proxy authentication: the `db` role creates an

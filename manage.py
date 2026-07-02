@@ -356,7 +356,7 @@ def info():
         console.print("[yellow]No Terraform outputs — run 'python manage.py tf apply' first.[/yellow]")
         raise typer.Exit(1)
     key = cfg.get("SSH_PRIVATE_KEY_PATH", "~/.ssh/id_rsa")
-    svc = cfg.get("DB_SERVICE", "health")
+    svc = cfg.get("DB_SERVICE", "myapp")
     console.print(Panel(
         f"Region:        {cfg.get('OCI_REGION','?')}\n"
         f"CMAN endpoint: {cman_ip}:1521/{svc}\n"
@@ -405,7 +405,7 @@ def sql():
         raise typer.Exit(1)
     user = "appuser"
     pwd = cfg["APPUSER_PASSWORD"]
-    svc = cfg.get("DB_SERVICE", "health")
+    svc = cfg.get("DB_SERVICE", "myapp")
     _drop_saved_connection("cman")
     script = f"conn -save cman -replace -savepwd {user}/{pwd}@{host}:1521/{svc}\nEXIT;\n"
     env = {**os.environ, "TERM": "dumb"}
@@ -496,39 +496,39 @@ def _do_drain(cfg, inst, timeout):
     # Ensure the service is up on every node first, so stopping one always leaves a
     # surviving instance to fail over to (otherwise a single-noded service goes fully down).
     _ops_db(cfg, _SRVCTL_ENV +
-        'srvctl start service -db "$D" -service health\n'
-        f'srvctl stop service -db "$D" -service health -instance {inst} '
+        'srvctl start service -db "$D" -service myapp\n'
+        f'srvctl stop service -db "$D" -service myapp -instance {inst} '
         f'-drain_timeout {timeout} -stopoption immediate -force\n'
-        'srvctl status service -db "$D" -service health\n')
+        'srvctl status service -db "$D" -service myapp\n')
 
 
 def _do_restore(cfg):
     _influx_event("restore")
     _ops_db(cfg, _SRVCTL_ENV +
-        'srvctl start service -db "$D" -service health\n'
-        'srvctl status service -db "$D" -service health\n')
+        'srvctl start service -db "$D" -service myapp\n'
+        'srvctl status service -db "$D" -service myapp\n')
 
 
 @app.command()
 def drain(instance: str = "", timeout: int = 60):
-    """Drain the health service off a RAC node (planned maintenance), marked in Grafana.
+    """Drain the myapp service off a RAC node (planned maintenance), marked in Grafana.
 
-    Stops 'health' on the node currently serving the workload, with a drain grace period, so
+    Stops 'myapp' on the node currently serving the workload, with a drain grace period, so
     you can watch what CMAN-TDM does for the running clients.
     """
     cfg = load_config({})
     inst = instance or _current_node()
-    typer.echo(f"Draining health off {inst} (drain_timeout={timeout}s)...")
+    typer.echo(f"Draining myapp off {inst} (drain_timeout={timeout}s)...")
     _do_drain(cfg, inst, timeout)
     typer.echo(f"\nDrained off {inst}. Watch the workload fail over; 'python manage.py restore' brings it back.")
 
 
 @app.command()
 def restore():
-    """Restart the health service on all RAC nodes after a drain demo."""
+    """Restart the myapp service on all RAC nodes after a drain demo."""
     cfg = load_config({})
     _do_restore(cfg)
-    typer.echo("health restarted on all nodes.")
+    typer.echo("myapp restarted on all nodes.")
 
 
 GENERATED_DIR = TF_DIR / "generated"
