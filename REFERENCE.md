@@ -43,8 +43,8 @@ client stays dedicated (EZConnect), so it builds a fresh backend gateway on fail
 
 ## Configuration primitives
 
-**`cman.ora`** — Traffic Director Mode plus the IP-allow rule (the rule list is default-deny; the
-showcase ships a single accept rule for the client CIDR):
+**`cman.ora`** — Traffic Director Mode plus the access rule list. The showcase accepts client
+connections from any source, so the demo never breaks when the operator's egress IP changes:
 
 ```
 cman_proxy =
@@ -62,9 +62,8 @@ cman_proxy =
       (log_level = user)
       (registration_invited_nodes = 10.0.2.0/24))
     (rule_list =
-      (rule = (src = CLIENT_CIDR)(dst = *)(srv = *)(act = accept))
-      (rule = (src = CMAN_HOST)(dst = 127.0.0.1)(srv = cmon)(act = accept))
-      (rule = (src = *)(dst = *)(srv = *)(act = reject))))
+      (rule = (src = *)(dst = *)(srv = *)(act = accept))
+      (rule = (src = CMAN_HOST)(dst = 127.0.0.1)(srv = cmon)(act = accept))))
 ```
 
 `registration_invited_nodes` is CMAN's valid-node check for service registration: the DB subnet

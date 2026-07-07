@@ -46,7 +46,7 @@ it anywhere and give `setup` that path. `setup` rejects a zip that does not cont
 python manage.py setup
 ```
 
-Interactive: selects OCI profile, region, compartment, SSH key, and client CIDR; asks for the path
+Interactive: selects OCI profile, region, compartment, and SSH key; asks for the path
 to the Oracle 19c client zip and validates it; generates the database, proxy-user, and app-user
 passwords; writes `.env` and `infra/terraform/terraform.tfvars`. Nothing is hand-edited after this.
 
@@ -101,12 +101,12 @@ ride it out in Grafana — is in [DEMO.md](DEMO.md).
 
 ## What gets deployed
 
-| Resource                     | Where          | Purpose                                                                                                              |
-| ---------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------- |
-| CMAN proxy VM                | Public subnet  | The only address the client knows. Runs CMAN-TDM on :1521. NSG allows ingress from the client CIDR on :1521 and :22. |
-| Ops / bastion VM             | Public subnet  | Self-provisions via cloud-init, runs the Ansible `cman` and `db` roles, and is the SSH hop to the private DB nodes.  |
-| 2-node RAC DB system         | Private subnet | Extreme Performance, SCAN + node VIPs on :1521, the `myapp` service. Unreachable from the client network.            |
-| Object Storage bucket + PARs | Regional       | Carries the client zip and Ansible roles to the ops host bootstrap.                                                  |
+| Resource                     | Where          | Purpose                                                                                                                     |
+| ---------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| CMAN proxy VM                | Public subnet  | The only address the client knows. Runs CMAN-TDM on :1521. NSG allows ingress from any source (0.0.0.0/0) on :1521 and :22. |
+| Ops / bastion VM             | Public subnet  | Self-provisions via cloud-init, runs the Ansible `cman` and `db` roles, and is the SSH hop to the private DB nodes.         |
+| 2-node RAC DB system         | Private subnet | Extreme Performance, SCAN + node VIPs on :1521, the `myapp` service. Unreachable from the client network.                   |
+| Object Storage bucket + PARs | Regional       | Carries the client zip and Ansible roles to the ops host bootstrap.                                                         |
 
 The client authenticates through CMAN-TDM with proxy authentication: the `db` role creates an
 `appuser` (client identity) and a `tdm` proxy user, and the `cman` role holds the `tdm` credential

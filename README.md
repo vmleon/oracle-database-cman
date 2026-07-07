@@ -40,7 +40,7 @@ the value a smart driver alone cannot reproduce.
 flowchart TB
     Laptop["Laptop<br/>connects only to the CMAN endpoint"]
     subgraph VCN["OCI Virtual Cloud Network"]
-        subgraph PUB["Public subnet — NSG: ingress from client CIDR only"]
+        subgraph PUB["Public subnet — NSG: ingress open (0.0.0.0/0)"]
             CMAN["CMAN proxy VM<br/>Traffic Director Mode, :1521<br/>RULE_LIST IP-allow"]
             OPS["Ops / bastion VM<br/>cloud-init self-provision<br/>runs Ansible cman + db roles"]
         end

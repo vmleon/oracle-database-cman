@@ -1,7 +1,6 @@
 module "network" {
   source           = "./modules/network"
   compartment_ocid = var.compartment_ocid
-  client_cidr      = var.client_cidr
 }
 
 module "db_system" {
@@ -47,5 +46,4 @@ module "ops" {
   appuser_password     = var.appuser_password
   db_name              = var.db_name
   service_name         = module.db_system.service_name
-  client_cidr          = var.client_cidr
 }

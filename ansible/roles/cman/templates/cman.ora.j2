@@ -14,7 +14,7 @@ cman_proxy =
       (registration_invited_nodes = {{ cman_db_subnet }}))
     (rule_list =
       (rule = (src = {{ cman_host }})(dst = 127.0.0.1)(srv = cmon)(act = accept))
-      (rule = (src = {{ client_cidr }})(dst = *)(srv = *)(act = accept))))
+      (rule = (src = *)(dst = *)(srv = *)(act = accept))))
 
 wallet_location =
   (source =

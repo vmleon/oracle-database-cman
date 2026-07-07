@@ -82,7 +82,3 @@ variable "db_name" {
 variable "service_name" {
   type = string
 }
-
-variable "client_cidr" {
-  type = string
-}

@@ -14,12 +14,12 @@ resource "oci_core_default_security_list" "default" {
     destination = "0.0.0.0/0"
     protocol    = "all"
   }
-  # no ingress rules: all ingress is governed by NSGs (client-CIDR allowlist)
+  # no ingress rules: all ingress is governed by NSGs
 }
 
 # Private (DB) subnet security list. OCI's LaunchDbSystem validates the subnet's
-# security list (not NSGs) and requires port 22 ingress; the NSGs still enforce the
-# fine-grained allowlist.
+# security list (not NSGs) and requires port 22 ingress; the DB stays reachable only
+# from inside the VCN (cman/ops NSGs), never from the internet.
 resource "oci_core_security_list" "private" {
   compartment_id = var.compartment_ocid
   vcn_id         = oci_core_vcn.this.id
@@ -131,7 +131,7 @@ resource "oci_core_network_security_group_security_rule" "cman_in_client_1521" {
   network_security_group_id = oci_core_network_security_group.cman.id
   direction                 = "INGRESS"
   protocol                  = "6"
-  source                    = var.client_cidr
+  source                    = "0.0.0.0/0"
   source_type               = "CIDR_BLOCK"
   tcp_options {
     destination_port_range {
@@ -146,7 +146,7 @@ resource "oci_core_network_security_group_security_rule" "cman_in_client_ssh" {
   network_security_group_id = oci_core_network_security_group.cman.id
   direction                 = "INGRESS"
   protocol                  = "6"
-  source                    = var.client_cidr
+  source                    = "0.0.0.0/0"
   source_type               = "CIDR_BLOCK"
   tcp_options {
     destination_port_range {
@@ -308,7 +308,7 @@ resource "oci_core_network_security_group_security_rule" "ops_in_client_ssh" {
   network_security_group_id = oci_core_network_security_group.ops.id
   direction                 = "INGRESS"
   protocol                  = "6"
-  source                    = var.client_cidr
+  source                    = "0.0.0.0/0"
   source_type               = "CIDR_BLOCK"
   tcp_options {
     destination_port_range {

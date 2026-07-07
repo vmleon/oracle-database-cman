@@ -27,11 +27,6 @@ variable "compartment_ocid" {
   type = string
 }
 
-variable "client_cidr" {
-  type        = string
-  description = "Operator/client public egress CIDR (e.g. 203.0.113.10/32)"
-}
-
 variable "ssh_public_key" {
   type = string
 }

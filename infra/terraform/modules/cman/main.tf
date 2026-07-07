@@ -42,4 +42,11 @@ resource "oci_core_instance" "cman" {
   metadata = {
     ssh_authorized_keys = var.ssh_public_key
   }
+
+  # Keep the provisioned host's image stable: a newer OL9 published by OCI drifts source_id and
+  # triggers an in-place update (which also trips OCI's 50 GB boot-volume minimum). Rebuild on a
+  # fresh image deliberately with -replace when needed.
+  lifecycle {
+    ignore_changes = [source_details[0].source_id]
+  }
 }

@@ -152,15 +152,6 @@ def _list_compartments(sdk_config):
         return None
 
 
-def _detect_public_ip():
-    for url in ("https://api.ipify.org", "https://checkip.amazonaws.com"):
-        try:
-            return urllib.request.urlopen(url, timeout=5).read().decode().strip()
-        except Exception:
-            continue
-    return None
-
-
 def _write_env(values):
     ENV_FILE.write_text("".join(f'{k}="{v}"\n' for k, v in values.items()))
 
@@ -235,14 +226,6 @@ def setup():
     else:
         compartment_ocid = inquirer.text(message="Compartment OCID:").execute()
 
-    detected = _detect_public_ip()
-    if detected:
-        console.print(f"\nDetected your public IP: [bold]{detected}[/bold]")
-    client_cidr = inquirer.text(
-        message="Client CIDR (your egress IP — locks CMAN ingress):",
-        default=f"{detected}/32" if detected else "0.0.0.0/0",
-    ).execute()
-
     ssh_dir = Path.home() / ".ssh"
     keys = (
         sorted(
@@ -285,7 +268,6 @@ def setup():
         f"Profile:       {profile}\n"
         f"Region:        {region}\n"
         f"Compartment:   {compartment_ocid}\n"
-        f"Client CIDR:   {client_cidr}\n"
         f"SSH key:       {ssh_private}\n"
         f"Database name: {db_name}\n"
         f"Client zip:    {client_zip}\n"
@@ -300,7 +282,6 @@ def setup():
         "OCI_PROFILE": profile,
         "OCI_REGION": region,
         "COMPARTMENT_OCID": compartment_ocid,
-        "CLIENT_CIDR": client_cidr,
         "SSH_PRIVATE_KEY_PATH": ssh_private,
         "SSH_PUBLIC_KEY_PATH": ssh_public_path,
         "DB_NAME": db_name,
@@ -316,7 +297,6 @@ def setup():
         "fingerprint": sdk_config["fingerprint"],
         "private_key_path": sdk_config["key_file"],
         "compartment_ocid": compartment_ocid,
-        "client_cidr": client_cidr,
         "ssh_public_key": ssh_public_key,
         "ssh_private_key_path": ssh_private,
         "db_admin_password": db_password,

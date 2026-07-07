@@ -30,7 +30,6 @@ locals {
     appuser_password    = var.appuser_password
     db_name             = var.db_name
     service_name        = var.service_name
-    client_cidr         = var.client_cidr
   })
 }
 
@@ -60,5 +59,12 @@ resource "oci_core_instance" "ops" {
   metadata = {
     ssh_authorized_keys = var.ssh_public_key
     user_data           = base64encode(local.cloud_init)
+  }
+
+  # Keep the provisioned host's image stable: a newer OL9 published by OCI drifts source_id and
+  # triggers an in-place update (which also trips OCI's 50 GB boot-volume minimum). Rebuild on a
+  # fresh image deliberately with -replace when needed.
+  lifecycle {
+    ignore_changes = [source_details[0].source_id]
   }
 }
