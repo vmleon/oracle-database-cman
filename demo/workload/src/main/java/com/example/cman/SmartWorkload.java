@@ -43,7 +43,8 @@ public final class SmartWorkload {
         var intervalMs = Long.parseLong(env("INTERVAL_MS", "1000"));
         var threads = Integer.parseInt(env("THREADS", "8"));
         // SERVER=POOLED routes this pooling-aware client to CMAN's PRCP pool of warm backend gateway
-        // sessions, so a drained/restored node is never cold. The dumb client stays EZConnect/dedicated.
+        // sessions, so a drained/restored node is never cold. PRCP requires every client on the
+        // service to be POOLED (the dumb client requests it too), but only this one adds UCP+AC+FAN.
         var jdbcUrl = "jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=" + host
                 + ")(PORT=" + port + "))(CONNECT_DATA=(SERVICE_NAME=" + service + ")(SERVER=POOLED)))";
 

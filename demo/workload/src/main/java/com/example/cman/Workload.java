@@ -41,7 +41,10 @@ public final class Workload {
         var intervalMs = Long.parseLong(env("INTERVAL_MS", "1000"));
         var threads = Integer.parseInt(env("THREADS", "1"));
 
-        var jdbcUrl = "jdbc:oracle:thin:@//" + host + ":" + port + "/" + service;
+        // PRCP is enabled on the service, so CMAN-TDM rejects dedicated connections (ORA-12694) —
+        // even this naive client must request (SERVER=POOLED). It still has no pool, AC, or FAN.
+        var jdbcUrl = "jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=" + host
+                + ")(PORT=" + port + "))(CONNECT_DATA=(SERVICE_NAME=" + service + ")(SERVER=POOLED)))";
         var props = new Properties();
         props.setProperty("user", user);
         props.setProperty("password", pass);

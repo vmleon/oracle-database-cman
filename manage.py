@@ -387,7 +387,8 @@ def sql():
     pwd = cfg["APPUSER_PASSWORD"]
     svc = cfg.get("DB_SERVICE", "myapp")
     _drop_saved_connection("cman")
-    script = f"conn -save cman -replace -savepwd {user}/{pwd}@{host}:1521/{svc}\nEXIT;\n"
+    # PRCP is enabled on the service, so CMAN rejects dedicated connections (ORA-12694): request POOLED.
+    script = f"conn -save cman -replace -savepwd {user}/{pwd}@{host}:1521/{svc}:POOLED\nEXIT;\n"
     env = {**os.environ, "TERM": "dumb"}
     subprocess.run(["sql", "/nolog"], input=script, text=True, env=env, check=True)
     typer.echo("Saved connection 'cman'. Use: TERM=dumb sql -name cman")
