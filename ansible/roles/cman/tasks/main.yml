@@ -114,12 +114,9 @@
     mode: "0644"
   notify: Reload CMAN configuration
 
-# Two roles: <events>true</events> lets CMAN consume FAN (service DOWN/UP + drain) and runtime load
-# balancing; the <session_pool> turns on PRCP so CMAN keeps a pool of warm backend gateway sessions
-# to the service. min_size keeps warm sessions even when idle, so a restored/surviving RAC node is
-# never cold — a smart client (SERVER=POOLED) checks out a warm session instead of building a slow
-# TDM gateway, which is what removes the post-drain UCP-29 borrow storm.
-- name: Deploy oraaccess.xml (FAN events + PRCP warm-backend pool)
+# Enables FAN event handling in CMAN's client stack so it consumes service DOWN/UP and
+# planned-maintenance drain events from the RAC and drains in-flight work.
+- name: Deploy oraaccess.xml (enable FAN events)
   ansible.builtin.copy:
     dest: "{{ cman_home }}/network/admin/oraaccess.xml"
     owner: "{{ oracle_user }}"
@@ -134,25 +131,6 @@
         <default_parameters>
           <events>true</events>
         </default_parameters>
-        <config_descriptions>
-          <config_description>
-            <config_alias>tdm_pooled</config_alias>
-            <parameters>
-              <session_pool>
-                <enable>true</enable>
-                <min_size>8</min_size>
-                <max_size>32</max_size>
-                <increment>2</increment>
-              </session_pool>
-            </parameters>
-          </config_description>
-        </config_descriptions>
-        <connection_configs>
-          <connection_config>
-            <connection_string>{{ service_name }}</connection_string>
-            <config_alias>tdm_pooled</config_alias>
-          </connection_config>
-        </connection_configs>
       </oraaccess>
   notify: Reload CMAN configuration
 

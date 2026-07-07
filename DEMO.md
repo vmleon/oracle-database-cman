@@ -71,14 +71,25 @@ Watch **Serving RAC node — dumb client** move to `dbcman2` with `status=ok`, *
 at 0, and **Smart pool spread across nodes** shift its share onto the survivor. Wait until the spread
 panel shows `dbcman2` carrying the pool before continuing.
 
-**Restore A — both nodes serving again:**
+**Restore A — bring `dbcman1` back into the pool:**
 
 ```bash
 python manage.py restore
 ```
 
-Wait until **Smart pool spread** shows **both** nodes populated again — the pool re-spreads
-gradually — before draining the other node.
+`restore` restarts `myapp` on both nodes, but nothing jumps back on the restore itself — expect:
+
+- **Smart pool re-spreads gradually, not instantly.** Pooled connections age out at
+  `maxConnectionReuseTime` (45 s) and their replacements are routed fresh across both nodes, so
+  **Smart pool spread across nodes** drifts back to `dbcman1` + `dbcman2` over roughly one reuse
+  cycle. **Give it ~60–90 s.**
+- **The dumb client does _not_ move back** — it holds one connection with no churn, so it stays on
+  `dbcman2`. This is expected (see "No failback" below), not a broken FAN event.
+
+**Wait until Smart pool spread shows both nodes populated (~a minute) before draining the other
+node.** Draining `dbcman2` while the pool is still entirely on it forces a near-total failover onto
+the just-restored, still-cold `dbcman1`; the first-query gateway warmup then shows as a brief
+latency spike — absorbed by the client's `connectionWaitDuration`, so still **zero errors**.
 
 **Drain B — push the clients off `dbcman2`:**
 
@@ -90,13 +101,15 @@ The dumb client moves back to `dbcman1`. RAC never fails a live session back on 
 second drain is what returns it to the origin — visible on **Serving RAC node — dumb client**.
 Errors stay at 0.
 
-**Restore B — both nodes serving again:**
+**Restore B — bring `dbcman2` back into the pool:**
 
 ```bash
 python manage.py restore
 ```
 
-Omit `--instance` to drain whichever node currently serves the dumb client (read from InfluxDB).
+Same as Restore A: the smart pool re-spreads across both nodes over ~60–90 s, and the dumb client
+stays on `dbcman1`. (`drain` without `--instance` targets whichever node currently serves the dumb
+client, read from InfluxDB.)
 
 ## What the charts teach
 
@@ -110,7 +123,9 @@ Omit `--instance` to drain whichever node currently serves the dumb client (read
 - **Smart client.** Application Continuity replays the in-flight query on the survivor, so the smart
   client rides the same drain with a small blip. **Smart pool spread across nodes** shows its 8
   pooled connections serving from both nodes at once and shifting their share onto the survivor — the
-  single-connection view a dumb client can't show.
+  single-connection view a dumb client can't show. After a `restore` it re-spreads back across both
+  nodes over ~one `maxConnectionReuseTime` cycle (~45–90 s), driven by connections aging out and
+  reconnecting fresh — not instantly on the restore event.
 - **Zero errors.** **Total errors** stays at 0 throughout: every drain is absorbed, by TDM for the
   dumb client and by AC replay for the smart one. A drain is never an outage here.
 - **No failback for the dumb client.** RAC never migrates a live session back; the dumb connection

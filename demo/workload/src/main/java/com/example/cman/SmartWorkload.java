@@ -27,11 +27,11 @@ public final class SmartWorkload {
 
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
 
-    // Retire a pooled connection once it has lived this long, so the pool re-spreads onto a
-    // restored node: UCP only rebalances lazily on FAN up events, so without a ceiling the whole
-    // pool can stay pinned to one node after a drain+restore. Gentle default; lower it (30-60s)
-    // for faster re-spread at the cost of more reconnects. 0 disables. See REFERENCE.md "Tuning".
-    private static final long MAX_CONN_REUSE_SECONDS = 180;
+    // Retire a pooled connection once it has lived this long so the pool re-spreads onto a restored
+    // node: the replacement connection is routed fresh, so over one reuse cycle the pool drifts back
+    // across both nodes after a drain+restore (UCP itself only rebalances lazily). 45s keeps that
+    // re-spread visible within the demo; raise it for fewer reconnects, 0 disables. See REFERENCE.md.
+    private static final long MAX_CONN_REUSE_SECONDS = 45;
 
     public static void main(String[] args) throws Exception {
         if (Boolean.parseBoolean(env("FAN_DEBUG", "false"))) enableFanLogging();
@@ -42,11 +42,7 @@ public final class SmartWorkload {
         var pass = require("APPUSER_PASSWORD");
         var intervalMs = Long.parseLong(env("INTERVAL_MS", "1000"));
         var threads = Integer.parseInt(env("THREADS", "8"));
-        // SERVER=POOLED routes this pooling-aware client to CMAN's PRCP pool of warm backend gateway
-        // sessions, so a drained/restored node is never cold. PRCP requires every client on the
-        // service to be POOLED (the dumb client requests it too), but only this one adds UCP+AC+FAN.
-        var jdbcUrl = "jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=" + host
-                + ")(PORT=" + port + "))(CONNECT_DATA=(SERVICE_NAME=" + service + ")(SERVER=POOLED)))";
+        var jdbcUrl = "jdbc:oracle:thin:@//" + host + ":" + port + "/" + service;
 
         PoolDataSource pds = buildPool(jdbcUrl, user, pass, threads, true);
         try {
@@ -100,9 +96,9 @@ public final class SmartWorkload {
             pds.setInitialPoolSize(min);
             pds.setMinPoolSize(min);
             pds.setMaxPoolSize(threads);
-            // Wait through a cold-pool warmup instead of failing the borrow: if the PRCP pool is
-            // still filling warm sessions right after a drain, a borrow waits up to this long rather
-            // than throwing UCP-29. Turns a residual storm into brief elevated latency, not errors.
+            // Wait through the cold-gateway rebuild instead of failing the borrow: when a drain lands
+            // the pool on a just-restored node, each fresh backend takes ~10s to establish, so a
+            // borrow waits up to this long rather than throwing UCP-29 — brief latency, not errors.
             pds.setConnectionWaitDuration(java.time.Duration.ofSeconds(30));
             pds.setConnectionProperty("oracle.net.CONNECT_TIMEOUT", "20000");
             // FAN/Fast Connection Failover: react to drain/up events (in-band via CMAN-TDM).
