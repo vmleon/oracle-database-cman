@@ -521,6 +521,114 @@
           "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r._field == \"latency_ms\" and r.status == \"error\" and r.client == \"smart\")\n  |> count()\n  |> set(key: \"_field\", value: \"errors\")\n  |> yield(name: \"errors\")"
         }
       ]
+    },
+    {
+      "id": 8,
+      "title": "Error log — code & message (most recent first)",
+      "description": "Every error point with its code and message. The code prefix is the story: UCP-* means the pool failed to hand out a connection (a borrow/warmup problem, not the DB); ORA-* / TNS-* is raised by the database or driver.",
+      "type": "table",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "message"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 900
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "err"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "client"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Time",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "_measurement": true,
+              "result": true,
+              "table": true,
+              "_start": true,
+              "_stop": true
+            },
+            "renameByName": {
+              "_time": "Time",
+              "client": "client",
+              "err": "err",
+              "_value": "message"
+            },
+            "indexByName": {
+              "_time": 0,
+              "client": 1,
+              "err": 2,
+              "_value": 3
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"workload\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cman_workload\" and r.status == \"error\" and r._field == \"err_msg\")\n  |> keep(columns: [\"_time\", \"client\", \"err\", \"_value\"])\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 200)"
+        }
+      ]
     }
   ]
 }

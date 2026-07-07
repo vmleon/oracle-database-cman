@@ -37,7 +37,9 @@ open CMAN→DB on port 6200 (`cman_eg_db_6200` / `db_in_cman_6200`), the continu
 The dumb client is deliberate: it isolates what the _proxy tier_ contributes from what the
 _driver_ contributes. The stable endpoint, firewalling, and topology-hiding are CMAN's regardless
 of client; transparent in-flight continuity needs a continuity-aware driver (or CMAN performing
-continuity on the client's behalf). Either way the client keeps the one CMAN endpoint.
+continuity on the client's behalf). Either way the client keeps the one CMAN endpoint. The smart
+client connects with `(SERVER=POOLED)` so it draws warm sessions from CMAN's PRCP pool; the dumb
+client stays dedicated (EZConnect), so it builds a fresh backend gateway on failover.
 
 ## Configuration primitives
 
@@ -51,6 +53,9 @@ cman_proxy =
     (parameter_list =
       (tdm = true)
       (tdm_threading_mode = dedicated)
+      (tdm_prcp_max_call_wait_time = 60)
+      (tdm_prcp_max_txn_call_wait_time = 120)
+      (service_affinity = off)
       (max_connections = 1024)
       (idle_timeout = 0)
       (inbound_connect_timeout = 60)
@@ -65,18 +70,44 @@ cman_proxy =
 `registration_invited_nodes` is CMAN's valid-node check for service registration: the DB subnet
 must be listed or CMAN rejects the registration (TNS-01182).
 
-**`oraaccess.xml`** — lets CMAN consume FAN in-band, required for draining/continuity:
+**`oraaccess.xml`** — two roles: `<events>true</events>` lets CMAN consume FAN, and the
+`<session_pool>` turns on PRCP (Proxy Resident Connection Pooling) so CMAN keeps a pool of warm
+backend gateway sessions to the service:
 
 ```xml
 <oraaccess>
   <default_parameters>
     <events>true</events>
   </default_parameters>
+  <config_descriptions>
+    <config_description>
+      <config_alias>tdm_pooled</config_alias>
+      <parameters>
+        <session_pool>
+          <enable>true</enable>
+          <min_size>8</min_size>
+          <max_size>32</max_size>
+          <increment>2</increment>
+        </session_pool>
+      </parameters>
+    </config_description>
+  </config_descriptions>
+  <connection_configs>
+    <connection_config>
+      <connection_string>SERVICE_NAME</connection_string>
+      <config_alias>tdm_pooled</config_alias>
+    </connection_config>
+  </connection_configs>
 </oraaccess>
 ```
 
 FAN reaches CMAN over ONS on port 6200, opened CMAN→DB by the `cman_eg_db_6200` / `db_in_cman_6200`
 NSG rules; without that path CMAN sees only `service_update` registration churn, not drain events.
+`min_size` is the warm-pool floor: CMAN keeps that many backend sessions live even when idle, so a
+restored or surviving node is never cold. A client that connects with `(SERVER=POOLED)` checks a
+warm session out of this pool per request instead of building a fresh TDM gateway (the ~10 s
+warmup); the PRCP knobs `tdm_prcp_max_call_wait_time` / `tdm_prcp_max_txn_call_wait_time` in
+`cman.ora` bound how long a client may hold a checked-out session idle before it is reclaimed.
 
 **`myapp` service (`srvctl`)** — Transparent Application Continuity attributes, preferred on both
 instances:
@@ -126,37 +157,46 @@ database does during planned maintenance) and **client-side pool settings** (how
 reacts and re-spreads afterwards). Values below are what this showcase ships; change them with the
 "tweak" column.
 
-| Knob                                       | Layer                                  | Now                            | What it does / what the wait is for                                                                                                                                                             | Tweak                                                                                                         |
-| ------------------------------------------ | -------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `drain_timeout`                            | service (`srvctl`) + `manage.py drain` | 120 s service / 60 s per drain | Grace period after the drain notification during which sessions relocate **at a request boundary** before `stopoption` ends the rest. The wait is for in-flight work to reach a safe point.     | Raise for long-running transactions; sub-second queries never need it.                                        |
-| `stopoption`                               | service                                | `IMMEDIATE`                    | How leftover sessions end when `drain_timeout` expires: `IMMEDIATE` cuts them, `TRANSACTIONAL`/`POST_TRANSACTION` waits for the transaction.                                                    | Leave `IMMEDIATE` for a planned demo; use transactional stops for OLTP that must not be cut.                  |
-| `replay_init_time`                         | service                                | 300 s (default)                | How long AC keeps trying to **initiate** replay after a recoverable error before giving up with `ORA-25415`. Not the bottleneck here — errors fired ~9 s in, far under 300 s.                   | Raise only if replay legitimately needs minutes to land on the survivor.                                      |
-| `rlbgoal SERVICE_TIME`                     | service                                | on                             | Publishes runtime load advisories over FAN. Removes the wait where the pool has nothing telling it a restored node is idle, so it re-spreads lazily. `SERVICE_TIME` routes to the fastest node. | `THROUGHPUT` to balance by work done instead of response time; `NONE` disables (what caused the pinned pool). |
-| `clbgoal SHORT`                            | service                                | on                             | Connection-time balancing for **new** connections. `SHORT` spreads by session count (right for pools).                                                                                          | `LONG` for long-lived, non-pooled connections.                                                                |
-| `maxConnectionReuseTime`                   | UCP client (`SmartWorkload.java`)      | 180 s                          | Retires an aged pooled connection so its replacement re-spreads onto a restored node. Bounds how long a connection can stay pinned when FAN _up_ events rebalance only lazily.                  | 30–60 s for aggressive re-spread (more reconnects); `0` disables.                                             |
-| `oracle.net.CONNECT_TIMEOUT`               | both clients                           | 20 s smart / 20 s dumb         | Bounds the TCP + logon to a backend. Too low aborts the slow first TDM logon and breaks reconnects.                                                                                             | Keep ≥ the observed cold-gateway logon (~10–20 s).                                                            |
-| statement query timeout                    | both clients                           | 30 s smart / 15 s dumb         | How fast a dead session is detected. Must sit **above** the first-query/TDM warmup (~10–20 s) or healthy slow queries get killed as false errors.                                               | Lower to detect failures faster once you know your warmup cost.                                               |
-| `idle_timeout` / `inbound_connect_timeout` | `cman.ora`                             | 0 / 60 s                       | CMAN idle-connection close (0 = never) and how long CMAN waits for a client connect handshake.                                                                                                  | Set `idle_timeout` > 0 to reap abandoned clients.                                                             |
-| `tdm_threading_mode` (PRCP)                | `cman.ora`                             | `dedicated`                    | Dedicated mode does **not** keep warm backend connections. CMAN cannot pre-warm a restored node, so re-spread is entirely the client pool's job (the two rows above).                           | Enabling PRCP pooling adds proxy-resident warm backends, at added CMAN config complexity.                     |
+| Knob                                       | Layer                                   | Now                            | What it does / what the wait is for                                                                                                                                                                                           | Tweak                                                                                                           |
+| ------------------------------------------ | --------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `drain_timeout`                            | service (`srvctl`) + `manage.py drain`  | 120 s service / 60 s per drain | Grace period after the drain notification during which sessions relocate **at a request boundary** before `stopoption` ends the rest. The wait is for in-flight work to reach a safe point.                                   | Raise for long-running transactions; sub-second queries never need it.                                          |
+| `stopoption`                               | service                                 | `IMMEDIATE`                    | How leftover sessions end when `drain_timeout` expires: `IMMEDIATE` cuts them, `TRANSACTIONAL`/`POST_TRANSACTION` waits for the transaction.                                                                                  | Leave `IMMEDIATE` for a planned demo; use transactional stops for OLTP that must not be cut.                    |
+| `replay_init_time`                         | service                                 | 300 s (default)                | How long AC keeps trying to **initiate** replay after a recoverable error before giving up with `ORA-25415`. Not the bottleneck here — errors fired ~9 s in, far under 300 s.                                                 | Raise only if replay legitimately needs minutes to land on the survivor.                                        |
+| `rlbgoal SERVICE_TIME`                     | service                                 | on                             | Publishes runtime load advisories over FAN. Removes the wait where the pool has nothing telling it a restored node is idle, so it re-spreads lazily. `SERVICE_TIME` routes to the fastest node.                               | `THROUGHPUT` to balance by work done instead of response time; `NONE` disables (what caused the pinned pool).   |
+| `clbgoal SHORT`                            | service                                 | on                             | Connection-time balancing for **new** connections. `SHORT` spreads by session count (right for pools).                                                                                                                        | `LONG` for long-lived, non-pooled connections.                                                                  |
+| `maxConnectionReuseTime`                   | UCP client (`SmartWorkload.java`)       | 180 s                          | Retires an aged pooled connection so its replacement re-spreads onto a restored node. Bounds how long a connection can stay pinned when FAN _up_ events rebalance only lazily.                                                | 30–60 s for aggressive re-spread (more reconnects); `0` disables.                                               |
+| `oracle.net.CONNECT_TIMEOUT`               | both clients                            | 20 s smart / 20 s dumb         | Bounds the TCP + logon to a backend. Too low aborts the slow first TDM logon and breaks reconnects.                                                                                                                           | Keep ≥ the observed cold-gateway logon (~10–20 s).                                                              |
+| statement query timeout                    | both clients                            | 30 s smart / 15 s dumb         | How fast a dead session is detected. Must sit **above** the first-query/TDM warmup (~10–20 s) or healthy slow queries get killed as false errors.                                                                             | Lower to detect failures faster once you know your warmup cost.                                                 |
+| `idle_timeout` / `inbound_connect_timeout` | `cman.ora`                              | 0 / 60 s                       | CMAN idle-connection close (0 = never) and how long CMAN waits for a client connect handshake.                                                                                                                                | Set `idle_timeout` > 0 to reap abandoned clients.                                                               |
+| `oraaccess <session_pool> min_size`        | `oraaccess.xml` (CMAN)                  | `min 8 / max 32`               | PRCP keeps this many warm backend gateway sessions to the service even when idle, so a restored or surviving node is never cold. A `SERVER=POOLED` client checks one out per request instead of building a ~10 s TDM gateway. | Raise `min_size` for a larger smart pool; delete the `<session_pool>` block to fall back to dedicated gateways. |
+| `SERVER=POOLED`                            | smart client URL (`SmartWorkload.java`) | on                             | Routes the pooling-aware smart client to CMAN's PRCP pool. The dumb client stays dedicated (EZConnect).                                                                                                                       | Remove to compare dedicated-gateway cold-start behaviour.                                                       |
+| `tdm_prcp_max_call_wait_time` / `_txn_`    | `cman.ora`                              | 60 s / 120 s                   | How long a client may hold a checked-out PRCP session idle (and once a transaction is open) before CMAN reclaims it back to the pool.                                                                                         | Raise for bursty clients that pause mid-session.                                                                |
+| `connectionWaitTimeout`                    | UCP client (`SmartWorkload.java`)       | 30 s                           | A borrow waits this long for a free/warm session before failing with `UCP-29`. Absorbs a still-filling PRCP pool right after a drain as brief latency instead of an error.                                                    | Lower to surface borrow failures faster.                                                                        |
+| `min` / `max` pool size                    | UCP client (`SmartWorkload.java`)       | 4 / 8                          | `min` below `max` means a drain rebuilds the pool only down to `min`, so fewer cold gateway builds land on the survivor at once.                                                                                              | Set `min = max` to keep every connection warm, at the cost of more rebuilds on a drain.                         |
 
-**Draining both nodes in sequence.** A single drain is absorbed with zero errors. Draining one
-node pushes the whole smart pool onto the survivor; `restore` brings the service back but the pool
-re-spreads only gradually. Draining the _second_ node before the pool has spread back means a
-near-total failover onto a node that was just restored and is still cold — which is what produces
-the handful of `ORA-25415`/`ORA-3114` on the smart client. `rlbgoal` + `maxConnectionReuseTime`
-shorten that re-spread window; operationally, **wait until the "Smart pool spread" panel shows both
-nodes populated before draining the other one.**
+**Draining both nodes in sequence.** Draining a node pushes the whole smart pool onto the survivor.
+CMAN's PRCP pool keeps `min_size` warm backend sessions, so the survivor is not cold: the smart
+pool checks out warm sessions, and `connectionWaitTimeout` absorbs any residual pool-fill delay as
+brief latency rather than a `UCP-29` borrow error. `restore` brings the drained node back, and
+`rlbgoal` + `maxConnectionReuseTime` re-spread the pool across both nodes. Operationally, **wait
+until the "Smart pool spread" panel shows both nodes populated before draining the other one.**
 
 ## Where the logs are
 
-| Log                         | Location                                                                  | How to read it                                                                                                        |
-| --------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| CMAN status / registrations | live, in-process                                                          | `cmctl show status -c cman_proxy`, `cmctl show services -c cman_proxy`                                                |
-| CMAN alert + trace          | ADR diag tree under the client `ORACLE_BASE`                              | `cmctl show parameter log_directory` / `trace_directory` to find the exact path, then read `cman_proxy/{alert,trace}` |
-| Database alert log          | `$ORACLE_BASE/diag/rdbms/<db>/<sid>/trace/alert_<sid>.log` on the DB node | `tail -f` as `oracle`                                                                                                 |
-| Service config / status     | live                                                                      | `srvctl config service -db "$D" -service myapp`, `srvctl status service ...`                                          |
-| Ops bootstrap               | `/var/log/cman-bootstrap.log` on the ops host                             | `python manage.py info` prints the tail command; complete when `/var/lib/cman-bootstrap.ok` exists                    |
-| Workload metrics            | InfluxDB `workload` bucket                                                | the Grafana **CMAN-TDM Resiliency** dashboard, or the InfluxDB UI at `:8086`                                          |
+| Log                         | Location                                                                  | How to read it                                                                                                                                                 |
+| --------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CMAN status / registrations | live, in-process                                                          | `cmctl show status -c cman_proxy`, `cmctl show services -c cman_proxy`                                                                                         |
+| CMAN alert + trace          | ADR diag tree under the client `ORACLE_BASE`                              | `cmctl show parameter log_directory` / `trace_directory` to find the exact path, then read `cman_proxy/{alert,trace}`                                          |
+| Database alert log          | `$ORACLE_BASE/diag/rdbms/<db>/<sid>/trace/alert_<sid>.log` on the DB node | `tail -f` as `oracle`                                                                                                                                          |
+| Service config / status     | live                                                                      | `srvctl config service -db "$D" -service myapp`, `srvctl status service ...`                                                                                   |
+| Ops bootstrap               | `/var/log/cman-bootstrap.log` on the ops host                             | `python manage.py info` prints the tail command; complete when `/var/lib/cman-bootstrap.ok` exists                                                             |
+| Workload metrics            | InfluxDB `workload` bucket                                                | the Grafana **CMAN-TDM Resiliency** dashboard, or the InfluxDB UI at `:8086`                                                                                   |
+| Client FAN trace            | smart client stdout, `FAN_DEBUG=true ./demo/run-smart.sh`                 | streams `oracle.simplefan` + `oracle.ucp`; during a drain, **silence here means the pool never received the FAN event** — CMAN isn't relaying it to the client |
+
+Each workload error ships its full detail, not just a count: an `err` tag (the code prefix, e.g.
+`UCP-29` or `ORA-03113` — the borrow-vs-database answer at a glance) plus an `err_msg` field that
+walks to the root cause (a `UCP-29` pool wrapper still shows the underlying `ORA-`/`TNS-` reason).
+The dashboard's **Error log** table renders these newest-first: time, client, code, message.
 
 Raise CMAN logging for a connection trace by setting a higher `log_level`/`trace_level` in
 `cman.ora`; a CMAN trace shows whether the database is publishing FAN (`event`/`drain`/`down`

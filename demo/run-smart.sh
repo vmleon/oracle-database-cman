@@ -17,6 +17,8 @@ export INFLUX_BUCKET="${INFLUX_BUCKET:-workload}"
 export INTERVAL_MS="${INTERVAL_MS:-1000}"
 export CLIENT=smart
 export THREADS="${THREADS:-8}"
+# FAN_DEBUG=true streams oracle.simplefan + oracle.ucp so a drain shows whether FAN reaches the pool.
+export FAN_DEBUG="${FAN_DEBUG:-false}"
 
 echo "Smart client (UCP+AC) THREADS=$THREADS CMAN_HOST=$CMAN_HOST DB_SERVICE=$DB_SERVICE"
 cd "$HERE/workload"

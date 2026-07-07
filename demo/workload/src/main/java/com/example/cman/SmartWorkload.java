@@ -34,6 +34,7 @@ public final class SmartWorkload {
     private static final long MAX_CONN_REUSE_SECONDS = 180;
 
     public static void main(String[] args) throws Exception {
+        if (Boolean.parseBoolean(env("FAN_DEBUG", "false"))) enableFanLogging();
         var host = require("CMAN_HOST");
         var port = env("CMAN_PORT", "1521");
         var service = require("DB_SERVICE");
@@ -41,7 +42,10 @@ public final class SmartWorkload {
         var pass = require("APPUSER_PASSWORD");
         var intervalMs = Long.parseLong(env("INTERVAL_MS", "1000"));
         var threads = Integer.parseInt(env("THREADS", "8"));
-        var jdbcUrl = "jdbc:oracle:thin:@//" + host + ":" + port + "/" + service;
+        // SERVER=POOLED routes this pooling-aware client to CMAN's PRCP pool of warm backend gateway
+        // sessions, so a drained/restored node is never cold. The dumb client stays EZConnect/dedicated.
+        var jdbcUrl = "jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=" + host
+                + ")(PORT=" + port + "))(CONNECT_DATA=(SERVICE_NAME=" + service + ")(SERVER=POOLED)))";
 
         PoolDataSource pds = buildPool(jdbcUrl, user, pass, threads, true);
         try {
@@ -63,6 +67,23 @@ public final class SmartWorkload {
         }
     }
 
+    // FAN_DEBUG=true streams the FAN/ONS event stack (oracle.simplefan) and pool activity
+    // (oracle.ucp) to stdout. During a drain this is the decisive test: if these loggers stay
+    // silent while a node drains, the pool never received the FAN event — CMAN-TDM isn't relaying
+    // it to the client, which is why connections are discovered dead lazily (UCP-29 on borrow)
+    // instead of draining ahead of the stop. See REFERENCE.md "FAN".
+    private static void enableFanLogging() {
+        var handler = new java.util.logging.ConsoleHandler();
+        handler.setLevel(java.util.logging.Level.ALL);
+        for (String name : new String[]{"oracle.simplefan", "oracle.ucp"}) {
+            var log = java.util.logging.Logger.getLogger(name);
+            log.setLevel(java.util.logging.Level.ALL);
+            log.addHandler(handler);
+            log.setUseParentHandlers(false);
+        }
+        System.out.println("FAN_DEBUG on: streaming oracle.simplefan + oracle.ucp at ALL");
+    }
+
     private static PoolDataSource buildPool(String url, String user, String pass, int threads, boolean fcf) {
         try {
             PoolDataSource pds = PoolDataSourceFactory.getPoolDataSource();
@@ -71,9 +92,17 @@ public final class SmartWorkload {
             pds.setURL(url);
             pds.setUser(user);
             pds.setPassword(pass);
-            pds.setInitialPoolSize(threads);
-            pds.setMinPoolSize(threads);
+            // min below max (half the worker count) so a drain that kills the connections on one
+            // node only forces the pool to rebuild down to min, not the full set — fewer cold
+            // gateway builds on the survivor, so less chance of a borrow (UCP-29) storm while it warms.
+            int min = Math.max(1, threads / 2);
+            pds.setInitialPoolSize(min);
+            pds.setMinPoolSize(min);
             pds.setMaxPoolSize(threads);
+            // Wait through a cold-pool warmup instead of failing the borrow: if the PRCP pool is
+            // still filling warm sessions right after a drain, a borrow waits up to this long rather
+            // than throwing UCP-29. Turns a residual storm into brief elevated latency, not errors.
+            pds.setConnectionWaitDuration(java.time.Duration.ofSeconds(30));
             pds.setConnectionProperty("oracle.net.CONNECT_TIMEOUT", "20000");
             // FAN/Fast Connection Failover: react to drain/up events (in-band via CMAN-TDM).
             pds.setFastConnectionFailoverEnabled(fcf);
@@ -117,8 +146,7 @@ public final class SmartWorkload {
                 if (downSince == 0) downSince = tsMs;
                 System.out.printf("%s  [smart-%d] ERROR ORA-%05d %s%n",
                         LocalTime.now().format(CLOCK), id, e.getErrorCode(), firstLine(e.getMessage()));
-                telemetry.write("cman_workload,client=smart,inst=none,host=none,status=error latency_ms="
-                        + ms + ",err_code=" + e.getErrorCode() + "i " + tsMs);
+                telemetry.write(Telemetry.errorLine("smart", ms, e, tsMs));
             }
             try {
                 Thread.sleep(intervalMs);

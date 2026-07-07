@@ -95,8 +95,7 @@ public final class Workload {
                 if (downSince == 0) downSince = tsMs;
                 System.out.printf("%s  [dumb-%d] ERROR ORA-%05d %s%n",
                         LocalTime.now().format(CLOCK), id, e.getErrorCode(), firstLine(e.getMessage()));
-                telemetry.write("cman_workload,client=dumb,inst=none,host=none,status=error latency_ms="
-                        + ms + ",err_code=" + e.getErrorCode() + "i " + tsMs);
+                telemetry.write(Telemetry.errorLine("dumb", ms, e, tsMs));
                 conn = reconnectQuietly(jdbcUrl, props, conn);
             }
             try {
